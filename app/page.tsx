@@ -1,36 +1,26 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { 
   ShieldCheck, TrendingUp, TrendingDown, 
-  RefreshCw, Zap 
+  RefreshCw, Zap, ShoppingCart, XCircle, CheckCircle2 
 } from 'lucide-react';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 export default function Dashboard() {
-  const [portfolio, setPortfolio] = useState<any>(null);
-  const [positions, setPositions] = useState<any[]>([]);
-  const [analyses, setAnalyses] = useState<any[]>([]);
+  const [data, setData] = useState<any>({ portfolio: null, positions: [], analyses: [], transactions: [] });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
+  // Charger toutes les données via le serveur sécurisé
   const loadData = async () => {
     try {
       setLoading(true);
-      const { data: p } = await supabase.from('portfolio').select('*').single();
-      const { data: pos } = await supabase.from('positions').select('*');
-      const { data: ana } = await supabase.from('ai_analyses').select('*').order('created_at', { ascending: false }).limit(6);
-
-      if (p) setPortfolio(p);
-      if (pos) setPositions(pos);
-      if (ana) setAnalyses(ana);
-    } catch (e) {
-      console.error(e);
+      const res = await fetch('/api/scan');
+      const json = await res.json();
+      setData(json);
+    } catch {
+      setStatusMsg('Erreur de connexion.');
     } finally {
       setLoading(false);
     }
@@ -40,105 +30,148 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  const setMode = async (mode: 'ADVISOR' | 'MANUAL' | 'AUTO') => {
-    if (!portfolio) return;
-    const { error } = await supabase.from('portfolio').update({ trading_mode: mode }).eq('id', portfolio.id);
-    if (!error) {
-      setPortfolio({ ...portfolio, trading_mode: mode });
-    }
+  // Changer de mode
+  const switchMode = async (mode: string) => {
+    setStatusMsg(`Mode changé en : ${mode}`);
+    // Mettre à jour localement immédiatement
+    setData((prev: any) => ({
+      ...prev,
+      portfolio: { ...prev.portfolio, trading_mode: mode }
+    }));
+    await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'SET_MODE', mode })
+    }).catch(() => {});
+    loadData();
   };
 
-  const triggerScan = async () => {
+  // Lancer le Scan Multi-IA
+  const runScan = async () => {
     setScanning(true);
-    setScanMessage('Analyse des marchés par Gemini & Groq...');
+    setStatusMsg('Les IA Gemini et Groq analysent les marchés...');
     try {
-      const res = await fetch('/api/scan', { method: 'POST' });
-      const data = await res.json();
-      if (data.logs && data.logs.length > 0) {
-        setScanMessage(data.logs.join(' | '));
-      } else {
-        setScanMessage('Scan terminé : Marchés analysés, seuils de risque respectés.');
-      }
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'SCAN' })
+      });
+      const result = await res.json();
+      if (result.logs) setStatusMsg(result.logs.join(' | '));
       await loadData();
     } catch {
-      setScanMessage('Erreur lors du scan.');
+      setStatusMsg('Erreur pendant le scan.');
     } finally {
       setScanning(false);
-      setTimeout(() => setScanMessage(null), 8000);
     }
   };
 
-  const totalVal = portfolio?.total_portfolio_value || 500;
-  const initialCap = portfolio?.initial_capital || 500;
-  const pnlTotal = totalVal - initialCap;
-  const pnlPct = ((pnlTotal / initialCap) * 100).toFixed(2);
-  const isPositive = pnlTotal >= 0;
+  // Acheter manuellement une opportunité suggérée
+  const buyStock = async (ticker: string, price: number) => {
+    setStatusMsg(`Achat de 100€ sur ${ticker} en cours...`);
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'MANUAL_BUY', ticker, name: ticker, price, amount: 100 })
+      });
+      const result = await res.json();
+      setStatusMsg(result.message || 'Ordre exécuté !');
+      await loadData();
+    } catch {
+      setStatusMsg('Erreur lors de l’achat.');
+    }
+  };
+
+  // Vendre une position
+  const sellStock = async (positionId: string, ticker: string) => {
+    setStatusMsg(`Vente de la ligne ${ticker}...`);
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'SELL_POSITION', positionId })
+      });
+      const result = await res.json();
+      setStatusMsg(result.message || 'Position vendue avec succès !');
+      await loadData();
+    } catch {
+      setStatusMsg('Erreur lors de la vente.');
+    }
+  };
+
+  const p = data.portfolio;
+  const totalVal = p?.total_portfolio_value || 500;
+  const cash = p?.cash_balance || 500;
+  const invested = p?.total_invested || 0;
+  const pnl = totalVal - 500;
+  const pnlPct = ((pnl / 500) * 100).toFixed(2);
+  const isPos = pnl >= 0;
+  const mode = p?.trading_mode || 'MANUAL';
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 14px 90px 14px', minHeight: '100vh', backgroundColor: '#090d16', color: '#f1f5f9' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 14px 90px 14px', minHeight: '100vh', backgroundColor: '#080c14', color: '#f1f5f9', fontFamily: '-apple-system, system-ui, sans-serif' }}>
       
-      {/* En-tête Mobile */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, paddingTop: 10 }}>
+      {/* En-tête */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ height: 8, width: 8, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-            <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>Système Actif 24/7</span>
+            <span style={{ fontSize: 11, color: '#10b981', fontWeight: 800, textTransform: 'uppercase' }}>Système Actif 24/7</span>
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: '2px 0 0 0', letterSpacing: -0.5 }}>AI Trading Manager</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: '2px 0 0 0' }}>AI Trading Manager</h1>
         </div>
-
-        <button 
-          onClick={loadData}
-          style={{ background: '#171e2e', border: '1px solid #2d3748', borderRadius: 12, padding: 8, color: '#94a3b8', display: 'flex', cursor: 'pointer' }}
-        >
-          <RefreshCw size={16} />
+        <button onClick={loadData} style={{ background: '#172033', border: '1px solid #28354d', borderRadius: 12, padding: 8, color: '#94a3b8', cursor: 'pointer' }}>
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
-      {/* Message d'action de l'IA */}
-      {scanMessage && (
-        <div style={{ background: '#1e293b', borderLeft: '3px solid #3b82f6', borderRadius: 8, padding: '10px 12px', fontSize: 12, marginBottom: 16 }}>
-          {scanMessage}
+      {/* Barre de messages / Logs */}
+      {statusMsg && (
+        <div style={{ background: '#111c33', borderLeft: '3px solid #3b82f6', borderRadius: 10, padding: '10px 12px', fontSize: 12, marginBottom: 14, color: '#93c5fd', lineHeight: 1.4 }}>
+          {statusMsg}
         </div>
       )}
 
-      {/* Carte Principale du Portefeuille */}
-      <div style={{ background: 'linear-gradient(135deg, #131b2e 0%, #0d1322 100%)', border: '1px solid #1e293b', borderRadius: 20, padding: 18, marginBottom: 16, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: 12, fontWeight: 500 }}>
+      {/* Carte Portefeuille */}
+      <div style={{ background: 'linear-gradient(135deg, #131c31 0%, #0c1220 100%)', border: '1px solid #1e2d4a', borderRadius: 20, padding: 18, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#829ab8', fontSize: 12, fontWeight: 600 }}>
           <span>VALEUR DU PORTEFEUILLE</span>
-          <span>Départ: {Number(initialCap).toFixed(2)} €</span>
+          <span>Capital: 500.00 €</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px 0' }}>
-          <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: -1 }}>{Number(totalVal).toFixed(2)} €</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: isPositive ? '#10b981' : '#ef4444', fontSize: 14, fontWeight: 700 }}>
-            {isPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-            <span>{isPositive ? '+' : ''}{pnlTotal.toFixed(2)} € ({isPositive ? '+' : ''}{pnlPct}%)</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '6px 0 12px 0' }}>
+          <span style={{ fontSize: 34, fontWeight: 900 }}>{Number(totalVal).toFixed(2)} €</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: isPos ? '#10b981' : '#ef4444', fontSize: 14, fontWeight: 800 }}>
+            {isPos ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+            <span>{isPos ? '+' : ''}{pnl.toFixed(2)} € ({isPos ? '+' : ''}{pnlPct}%)</span>
           </div>
         </div>
 
-        {/* Détails Liquidités & Investi */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: '#0a0f1d', borderRadius: 12, padding: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: '#090e1a', borderRadius: 12, padding: 10 }}>
           <div>
-            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>DISPONIBLE (CASH)</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>{Number(portfolio?.cash_balance || 500).toFixed(2)} €</div>
+            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>DISPONIBLE (CASH)</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>{Number(cash).toFixed(2)} €</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>TOTAL INVESTI</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#38bdf8' }}>{Number(portfolio?.total_invested || 0).toFixed(2)} €</div>
+            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>TOTAL INVESTI</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#38bdf8' }}>{Number(invested).toFixed(2)} €</div>
           </div>
         </div>
       </div>
 
       {/* Sélecteur des 3 Modes */}
-      <div style={{ background: '#0f172a', borderRadius: 16, padding: 5, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 16, border: '1px solid #1e293b' }}>
-        {(['ADVISOR', 'MANUAL', 'AUTO'] as const).map((m) => {
-          const isActive = portfolio?.trading_mode === m;
-          const labels = { ADVISOR: 'Conseiller', MANUAL: 'Manuel', AUTO: 'Automatique' };
+      <div style={{ background: '#0d1527', borderRadius: 16, padding: 4, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 14, border: '1px solid #1e2d4a' }}>
+        {[
+          { key: 'ADVISOR', label: 'Conseiller' },
+          { key: 'MANUAL', label: 'Manuel' },
+          { key: 'AUTO', label: 'Automatique' }
+        ].map((m) => {
+          const isActive = mode === m.key;
           return (
             <button
-              key={m}
-              onClick={() => setMode(m)}
+              key={m.key}
+              onClick={() => switchMode(m.key)}
               style={{
                 backgroundColor: isActive ? '#2563eb' : 'transparent',
                 color: isActive ? '#fff' : '#64748b',
@@ -146,11 +179,11 @@ export default function Dashboard() {
                 borderRadius: 12,
                 padding: '9px 0',
                 fontSize: 12,
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: 'pointer'
               }}
             >
-              {labels[m]}
+              {m.label}
             </button>
           );
         })}
@@ -158,7 +191,7 @@ export default function Dashboard() {
 
       {/* Bouton de Scan Instantané */}
       <button
-        onClick={triggerScan}
+        onClick={runScan}
         disabled={scanning}
         style={{
           width: '100%',
@@ -168,80 +201,121 @@ export default function Dashboard() {
           borderRadius: 14,
           padding: 13,
           fontSize: 14,
-          fontWeight: 800,
+          fontWeight: 900,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
-          marginBottom: 20,
+          marginBottom: 18,
           cursor: 'pointer'
         }}
       >
         <Zap size={18} fill="#022c22" />
-        <span>{scanning ? 'Analyse Multi-IA en cours...' : '⚡ Scanner le marché avec les IA'}</span>
+        <span>{scanning ? 'Analyse Multi-IA en cours...' : '⚡ Lancer le scan des opportunités'}</span>
       </button>
 
-      {/* Section Positions Détenues */}
-      <div style={{ marginBottom: 22 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: '#cbd5e1', letterSpacing: 0.5 }}>POSITIONS ACTUELLES ({positions.length})</h2>
+      {/* Positions Ouvertes */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h2 style={{ fontSize: 13, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Positions détenues ({data.positions.length})
+          </h2>
           <span style={{ fontSize: 11, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
             <ShieldCheck size={13} /> Stop-Loss à -5% actif
           </span>
         </div>
 
-        {positions.length === 0 ? (
-          <div style={{ background: '#0e1526', border: '1px dashed #1e293b', borderRadius: 14, padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-            Aucune position ouverte. Capital 100% protégé en liquidités.
+        {data.positions.length === 0 ? (
+          <div style={{ background: '#0d1527', border: '1px dashed #1e2d4a', borderRadius: 14, padding: 14, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+            Aucune position ouverte. Votre capital est 100% en liquidités.
           </div>
         ) : (
-          positions.map((p) => (
-            <div key={p.id} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: 12, marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div>
-                  <span style={{ fontWeight: 800, fontSize: 15 }}>{p.ticker}</span>
-                  <span style={{ fontSize: 11, color: '#64748b', marginLeft: 6 }}>{p.shares} parts</span>
-                </div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: p.unrealized_pnl >= 0 ? '#10b981' : '#ef4444' }}>
-                  {p.unrealized_pnl >= 0 ? '+' : ''}{p.unrealized_pnl} € ({p.unrealized_pnl_pct}%)
-                </div>
+          data.positions.map((pos: any) => (
+            <div key={pos.id} style={{ background: '#0f182c', border: '1px solid #1e2d4a', borderRadius: 14, padding: 12, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>{pos.ticker}</span>
+                <span style={{ fontWeight: 800, fontSize: 15, color: pos.unrealized_pnl >= 0 ? '#10b981' : '#ef4444' }}>
+                  {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.current_value} €
+                </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8' }}>
-                <span>Achat: {p.average_buy_price}$ | Actuel: {p.current_price}$</span>
-                <span style={{ color: '#f59e0b' }}>Stop-Loss: {p.stop_loss_price}$</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#829ab8', marginBottom: 8 }}>
+                <span>{pos.shares} parts @ {pos.average_buy_price}$</span>
+                <span style={{ color: '#f59e0b' }}>Stop-Loss : {pos.stop_loss_price}$</span>
               </div>
+              <button
+                onClick={() => sellStock(pos.id, pos.ticker)}
+                style={{ width: '100%', background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Clôturer la position (Vendre)
+              </button>
             </div>
           ))
         )}
       </div>
 
-      {/* Section Dernières Décisions des IA */}
+      {/* Délibérations du Comité des IA */}
       <div>
-        <h2 style={{ fontSize: 14, fontWeight: 700, color: '#cbd5e1', letterSpacing: 0.5, marginBottom: 10 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
           DÉLIBÉRATIONS DU COMITÉ DES IA
         </h2>
 
-        {analyses.length === 0 ? (
-          <div style={{ background: '#0e1526', border: '1px solid #1e293b', borderRadius: 14, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-            Touchez « Scanner le marché » pour obtenir les premières analyses de Gemini et Groq.
+        {data.analyses.length === 0 ? (
+          <div style={{ background: '#0d1527', border: '1px solid #1e2d4a', borderRadius: 14, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+            Touchez « Lancer le scan » pour afficher les avis en direct de Gemini et Groq.
           </div>
         ) : (
-          analyses.map((a) => (
-            <div key={a.id} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: 12, marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 800, fontSize: 14, color: '#38bdf8' }}>{a.ticker}</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, background: '#1e293b', padding: '3px 7px', borderRadius: 8, color: '#94a3b8' }}>{a.ai_name}</span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: a.signal === 'BUY' ? '#10b981' : a.signal === 'SELL' ? '#ef4444' : '#f59e0b' }}>
+          data.analyses.map((a: any) => {
+            const isBuy = a.signal === 'BUY';
+            return (
+              <div key={a.id} style={{ background: '#0f182c', border: '1px solid #1e2d4a', borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 900, fontSize: 15, color: '#38bdf8' }}>{a.ticker}</span>
+                    <span style={{ fontSize: 10, background: '#1c2842', padding: '2px 7px', borderRadius: 6, color: '#94a3b8', fontWeight: 600 }}>{a.ai_name}</span>
+                  </div>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: '3px 8px',
+                    borderRadius: 8,
+                    background: isBuy ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                    color: isBuy ? '#10b981' : '#ef4444'
+                  }}>
                     {a.signal} ({a.confidence}%)
                   </span>
                 </div>
+
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                  {a.reasoning}
+                </p>
+
+                {/* Bouton d'Achat Manuel pour profiter de l'opportunité */}
+                {mode === 'MANUAL' && isBuy && (
+                  <button
+                    onClick={() => buyStock(a.ticker, a.ticker === 'NVDA' ? 138.5 : 228.0)}
+                    style={{
+                      width: '100%',
+                      background: '#1d4ed8',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 9,
+                      padding: '8px 0',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <ShoppingCart size={14} />
+                    <span>Acheter 100€ de {a.ticker} (Stop-Loss auto à -5%)</span>
+                  </button>
+                )}
               </div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
-                {a.reasoning}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
