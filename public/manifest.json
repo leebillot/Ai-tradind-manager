@@ -1,0 +1,23 @@
+{
+  "name": "AI Trading Manager",
+  "short_name": "AI Trading",
+  "description": "Assistant autonome de gestion de portefeuille boursier Multi-IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/fluency/192/bullish.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/bullish.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
