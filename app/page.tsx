@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   Bot, TrendingUp, RefreshCw, Zap, Wallet, 
   RotateCcw, Award, ArrowUpRight, ArrowDownRight, Layers, Sparkles,
-  Bell, BellRing, Clock, ShoppingCart, Globe
+  Clock, ShoppingCart, Globe, Activity
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -13,29 +13,25 @@ export default function Dashboard() {
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [markets, setMarkets] = useState<any[]>([]);
   const [aiScore, setAiScore] = useState<number>(1000);
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
   
-  const [notifEnabled, setNotifEnabled] = useState(false);
-  const [countdown, setCountdown] = useState(300); // 5 minutes = 300s
+  // Timer 5 minutes (300 secondes)
+  const [countdown, setCountdown] = useState(300);
   const modeRef = useRef('MANUAL');
 
+  // Initialisation et mémoire active
   useEffect(() => {
     const savedMode = localStorage.getItem('ai_trading_mode');
     if (savedMode) {
       modeRef.current = savedMode;
       setPortfolio((prev: any) => ({ ...prev, trading_mode: savedMode }));
     }
-
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotifEnabled(Notification.permission === 'granted');
-    }
-
     refreshData();
   }, []);
 
-  // Décompte de 5 minutes pour auto-scan
+  // Décompte de 5 minutes
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -51,31 +47,7 @@ export default function Dashboard() {
   }, []);
 
   const triggerAutoScan = () => {
-    const currentMode = modeRef.current;
-    handleAction('SCAN', { mode: currentMode }, true);
-  };
-
-  const sendPhoneNotification = (title: string, body: string) => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(title, {
-          body,
-          icon: 'https://img.icons8.com/fluency/192/bullish.png'
-        });
-      } catch (e) {
-        console.error('Erreur notification', e);
-      }
-    }
-  };
-
-  const enableNotifications = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const perm = await Notification.requestPermission();
-      if (perm === 'granted') {
-        setNotifEnabled(true);
-        sendPhoneNotification('Notifications Activées', 'Vous recevrez un rapport dès que l’IA achète ou vend une action US / Paris !');
-      }
-    }
+    handleAction('SCAN', { mode: modeRef.current }, 'silent');
   };
 
   const refreshData = async () => {
@@ -98,9 +70,9 @@ export default function Dashboard() {
     }
   };
 
-  const handleAction = async (action: string, payload: any = {}, isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    setStatusMsg('Traitement stratégique en cours...');
+  const handleAction = async (action: string, payload: any = {}, actionKey = 'action') => {
+    if (actionKey !== 'silent') setLoadingAction(actionKey);
+    setStatusMsg('Exécution de l’ordre...');
     try {
       const activeMode = payload.mode !== undefined ? payload.mode : modeRef.current;
       const res = await fetch('/api/scan', {
@@ -110,6 +82,11 @@ export default function Dashboard() {
       });
       const data = await res.json();
 
+      if (data.error) {
+        setStatusMsg('Erreur : ' + data.error);
+        return;
+      }
+
       if (data.portfolio) {
         data.portfolio.trading_mode = activeMode;
         setPortfolio(data.portfolio);
@@ -118,16 +95,12 @@ export default function Dashboard() {
       if (data.analyses) setAnalyses(data.analyses);
       if (data.markets) setMarkets(data.markets);
       if (data.ai_score !== undefined) setAiScore(data.ai_score);
-      if (data.message) {
-        setStatusMsg(data.message);
-        if (data.notificationTrigger) {
-          sendPhoneNotification('Alerte AI Trading', data.message);
-        }
-      }
+      if (data.message) setStatusMsg(data.message);
+
     } catch (err: any) {
-      setStatusMsg('Erreur : ' + err.message);
+      setStatusMsg('Erreur réseau : ' + err.message);
     } finally {
-      if (!isSilent) setLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -135,7 +108,7 @@ export default function Dashboard() {
     modeRef.current = newMode;
     localStorage.setItem('ai_trading_mode', newMode);
     setPortfolio((prev: any) => ({ ...prev, trading_mode: newMode }));
-    handleAction('SET_MODE', { mode: newMode });
+    handleAction('SET_MODE', { mode: newMode }, 'mode');
   };
 
   const isAuto = portfolio?.trading_mode === 'AUTO';
@@ -152,7 +125,6 @@ export default function Dashboard() {
   const totalPnL = currentPositionsVal - totalInvested;
   const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
-  // Filtrage des marchés affichés
   const filteredMarkets = markets.filter(m => {
     if (selectedFilter === 'US') return m.market === 'NASDAQ' || m.market === 'NYSE';
     if (selectedFilter === 'PARIS') return m.market === 'PARIS';
@@ -163,7 +135,7 @@ export default function Dashboard() {
     <div style={{ backgroundColor: '#090d16', color: '#f8fafc', minHeight: '100vh', padding: '1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
-        {/* HEADER DE COMMANDE */}
+        {/* HEADER */}
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -172,29 +144,15 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>AI Trading Manager</h1>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.8rem' }}>Wall Street & Euronext Paris • Scan Multi-Actifs</p>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.8rem' }}>Wall Street & Euronext Paris • Moteur Autonome</p>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             
-            {/* NOTIFICATIONS MOBILE */}
-            <button
-              onClick={enableNotifications}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                backgroundColor: notifEnabled ? 'rgba(16, 185, 129, 0.15)' : '#1e293b',
-                color: notifEnabled ? '#10b981' : '#94a3b8',
-                border: `1px solid ${notifEnabled ? '#10b981' : '#334155'}`,
-                padding: '0.6rem 0.9rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600
-              }}>
-              {notifEnabled ? <BellRing size={16} /> : <Bell size={16} />}
-              {notifEnabled ? 'Notifs ON' : 'Activer Notifs'}
-            </button>
-
-            {/* SCORE DE L'IA */}
+            {/* SCORE DE L'IA & TIMER COMPACT */}
             <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              display: 'flex', alignItems: 'center', gap: '0.6rem',
               backgroundColor: '#131b2e', border: '1px solid #2563eb', padding: '0.45rem 0.8rem',
               borderRadius: '8px'
             }}>
@@ -203,12 +161,18 @@ export default function Dashboard() {
                 <div style={{ fontSize: '0.6rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Score IA</div>
                 <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#38bdf8' }}>{aiScore} pts</div>
               </div>
+
+              {/* TIMER COMPACT */}
+              <div style={{ borderLeft: '1px solid #334155', paddingLeft: '0.6rem', marginLeft: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#94a3b8', fontSize: '0.8rem' }}>
+                <Clock size={13} color="#38bdf8" />
+                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{formatTime(countdown)}</span>
+              </div>
             </div>
 
             {/* SWITCH AUTO / MANUEL */}
             <button
               onClick={() => toggleMode(isAuto ? 'MANUAL' : 'AUTO')}
-              disabled={loading}
+              disabled={loadingAction === 'mode'}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 backgroundColor: isAuto ? '#dc2626' : '#10b981',
@@ -221,21 +185,21 @@ export default function Dashboard() {
 
             {/* SCAN IA */}
             <button
-              onClick={() => handleAction('SCAN')}
-              disabled={loading}
+              onClick={() => handleAction('SCAN', {}, 'scan')}
+              disabled={loadingAction === 'scan'}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 backgroundColor: '#1e293b', color: '#38bdf8', border: '1px solid #334155',
                 padding: '0.65rem 1rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem'
               }}>
-              <RefreshCw size={15} />
+              <RefreshCw size={15} className={loadingAction === 'scan' ? 'animate-spin' : ''} />
               Scan Marchés
             </button>
 
             {/* RESET */}
             <button
-              onClick={() => { if (confirm('Remettre le portefeuille à 500 € ?')) handleAction('RESET'); }}
-              disabled={loading}
+              onClick={() => { if (confirm('Remettre le portefeuille à 500 € ?')) handleAction('RESET', {}, 'reset'); }}
+              disabled={loadingAction === 'reset'}
               title="Réinitialiser"
               style={{
                 backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
@@ -248,12 +212,13 @@ export default function Dashboard() {
 
         {/* NOTIFICATION D'ACTION EN DIRECT */}
         {statusMsg && (
-          <div style={{ backgroundColor: '#131b2e', borderLeft: '4px solid #38bdf8', padding: '0.75rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#e2e8f0' }}>
-            {statusMsg}
+          <div style={{ backgroundColor: '#131b2e', borderLeft: '4px solid #38bdf8', padding: '0.75rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Activity size={16} color="#38bdf8" />
+            <span>{statusMsg}</span>
           </div>
         )}
 
-        {/* STATS HAUT GAUCHE : CASH, PLACÉ, VALEUR, GAIN GLOBAL, TIMER */}
+        {/* STATS HAUT GAUCHE */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
           
           <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
@@ -284,31 +249,22 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#94a3b8', fontSize: '0.7rem', fontWeight: 600 }}>
-              <Clock size={12} /> SCAN DANS
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#e2e8f0' }}>
-              {formatTime(countdown)}
-            </div>
-          </div>
-
         </div>
 
-        {/* 1ER BLOC MAJEUR : VOS ACTIONS ACHETÉES (PREMIER PLAN) */}
+        {/* 1ER BLOC : VOS ACTIONS ACHETÉES (PREMIER PLAN) */}
         <section style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Layers size={20} color="#10b981" />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Vos Actions Achetées ({positions.length})</h2>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Vos Actions Détenues ({positions.length})</h2>
             </div>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Portefeuille diversifié en direct</span>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Mise à jour en temps réel</span>
           </div>
 
           <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', overflow: 'hidden' }}>
             {positions.length === 0 ? (
               <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
-                Aucune action détenue pour le moment. Activez le <strong>Mode AUTO</strong> ou utilisez le bouton <strong>Acheter</strong> ci-dessous.
+                Aucune action détenue. Activez le <strong>Mode AUTO</strong> pour un panier automatique, ou achetez manuellement ci-dessous.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -354,14 +310,14 @@ export default function Dashboard() {
                           </td>
                           <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
                             <button
-                              onClick={() => handleAction('SELL', { positionId: pos.id })}
-                              disabled={loading}
+                              onClick={() => handleAction('SELL', { positionId: pos.id }, `sell-${pos.id}`)}
+                              disabled={loadingAction === `sell-${pos.id}`}
                               style={{
                                 backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
                                 border: '1px solid rgba(239, 68, 68, 0.25)', padding: '0.35rem 0.75rem',
                                 borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700
                               }}>
-                              Vendre
+                              {loadingAction === `sell-${pos.id}` ? '...' : 'Vendre'}
                             </button>
                           </td>
                         </tr>
@@ -374,11 +330,11 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 2E BLOC : ANALYSES MULTI-IA & SELECTION DU MARCHÉ */}
+        {/* 2E BLOC : ANALYSES MULTI-IA */}
         <section style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <Sparkles size={20} color="#38bdf8" />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Meilleures Opportunités IA Détectées ({analyses.length})</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Opportunités Détectées ({analyses.length})</h2>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
@@ -419,7 +375,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 3E BLOC : MARCHÉS SUIVIS (US & PARIS) AVEC FILTRES & ACHAT DIRECT */}
+        {/* 3E BLOC : MARCHÉS SUIVIS (ACHATS MULTIPLES RAPIDES) */}
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -429,7 +385,6 @@ export default function Dashboard() {
               </h2>
             </div>
 
-            {/* FILTRES PAR MARCHÉ */}
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               {(['ALL', 'US', 'PARIS'] as const).map(f => (
                 <button
@@ -448,35 +403,38 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '0.75rem' }}>
-            {filteredMarkets.map((m) => (
-              <div key={m.ticker} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <span style={{ fontWeight: 800 }}>{m.ticker}</span>
-                    <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', backgroundColor: '#1e293b', borderRadius: '4px', color: '#94a3b8' }}>
-                      {m.market}
-                    </span>
+            {filteredMarkets.map((m) => {
+              const isBuyingThis = loadingAction === `buy-${m.ticker}`;
+              return (
+                <div key={m.ticker} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontWeight: 800 }}>{m.ticker}</span>
+                      <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', backgroundColor: '#1e293b', borderRadius: '4px', color: '#94a3b8' }}>
+                        {m.market}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{m.name}</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginTop: '0.2rem' }}>
+                      {m.price} € <span style={{ fontSize: '0.75rem', color: m.change.startsWith('+') ? '#10b981' : '#ef4444' }}>{m.change}</span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{m.name}</div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700, marginTop: '0.2rem' }}>
-                    {m.price} € <span style={{ fontSize: '0.75rem', color: m.change.startsWith('+') ? '#10b981' : '#ef4444' }}>{m.change}</span>
-                  </div>
-                </div>
 
-                <button
-                  onClick={() => handleAction('MANUAL_BUY', { ticker: m.ticker, name: m.name, price: m.price, amount: 40 })}
-                  disabled={loading || cash < 40}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.3rem',
-                    backgroundColor: cash >= 40 ? '#2563eb' : '#334155',
-                    color: '#fff', border: 'none', padding: '0.5rem 0.8rem', borderRadius: '6px',
-                    fontSize: '0.8rem', fontWeight: 700, cursor: cash >= 40 ? 'pointer' : 'not-allowed'
-                  }}>
-                  <ShoppingCart size={14} />
-                  Acheter (40€)
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={() => handleAction('MANUAL_BUY', { ticker: m.ticker, name: m.name, price: m.price, amount: 40 }, `buy-${m.ticker}`)}
+                    disabled={isBuyingThis || cash < 40}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.3rem',
+                      backgroundColor: cash >= 40 ? '#2563eb' : '#334155',
+                      color: '#fff', border: 'none', padding: '0.5rem 0.8rem', borderRadius: '6px',
+                      fontSize: '0.8rem', fontWeight: 700, cursor: cash >= 40 && !isBuyingThis ? 'pointer' : 'not-allowed'
+                    }}>
+                    <ShoppingCart size={14} />
+                    {isBuyingThis ? 'Achat...' : 'Acheter (40€)'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
 
