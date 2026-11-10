@@ -10,13 +10,28 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-// Données marchés avec prix de base d'achat simulé pour générer du gain/perte
+// LARGE PANIER DE SURVEILLANCE : BOURSE US (NYSE/NASDAQ) & BOURSE DE PARIS (EURONEXT)
 const MARKETS_DATA = [
-  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'NASDAQ', price: 142.50, buyBase: 128.00, change: '+6.2%' },
-  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'EURONEXT', price: 624.00, buyBase: 610.00, change: '+2.3%' },
-  { ticker: 'AAPL', name: 'Apple Inc', market: 'NASDAQ', price: 231.00, buyBase: 226.00, change: '+1.5%' },
-  { ticker: 'TSLA', name: 'Tesla Inc', market: 'NASDAQ', price: 254.00, buyBase: 238.00, change: '+5.4%' },
-  { ticker: 'TTE.PA', name: 'TotalEnergies', market: 'EURONEXT', price: 58.40, buyBase: 58.00, change: '+0.5%' }
+  // --- MARCHÉ AMÉRICAIN (US) ---
+  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'NASDAQ', price: 142.50, buyBase: 131.00, change: '+5.4%', sector: 'Semi-conducteurs / IA' },
+  { ticker: 'TSLA', name: 'Tesla Inc', market: 'NASDAQ', price: 254.00, buyBase: 238.00, change: '+6.2%', sector: 'Auto / Robotique' },
+  { ticker: 'MSFT', name: 'Microsoft Corp', market: 'NASDAQ', price: 428.00, buyBase: 418.00, change: '+1.9%', sector: 'Cloud / IA' },
+  { ticker: 'PLTR', name: 'Palantir Tech', market: 'NYSE', price: 44.50, buyBase: 39.00, change: '+8.3%', sector: 'Défense / Data IA' },
+  { ticker: 'AAPL', name: 'Apple Inc', market: 'NASDAQ', price: 231.00, buyBase: 226.00, change: '+1.2%', sector: 'Tech / Grand Public' },
+  { ticker: 'AMZN', name: 'Amazon.com', market: 'NASDAQ', price: 196.00, buyBase: 189.00, change: '+2.5%', sector: 'Cloud / E-commerce' },
+  { ticker: 'META', name: 'Meta Platforms', market: 'NASDAQ', price: 585.00, buyBase: 565.00, change: '+3.1%', sector: 'IA / Réseaux Sociaux' },
+  { ticker: 'AMD', name: 'Advanced Micro Devices', market: 'NASDAQ', price: 156.00, buyBase: 148.00, change: '+4.1%', sector: 'Semi-conducteurs' },
+  { ticker: 'LLY', name: 'Eli Lilly & Co', market: 'NYSE', price: 820.00, buyBase: 795.00, change: '+2.8%', sector: 'Santé / Pharma' },
+
+  // --- MARCHÉ FRANÇAIS (PARIS / EURONEXT) ---
+  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', price: 624.00, buyBase: 610.00, change: '+2.1%', sector: 'Luxe Mondial' },
+  { ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', price: 2080.00, buyBase: 2020.00, change: '+2.9%', sector: 'Ultra-Luxe' },
+  { ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', price: 242.00, buyBase: 232.00, change: '+3.8%', sector: 'Énergie / Data Centers' },
+  { ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', price: 141.20, buyBase: 138.50, change: '+1.4%', sector: 'Aéronautique' },
+  { ticker: 'TTE.PA', name: 'TotalEnergies', market: 'PARIS', price: 58.40, buyBase: 57.60, change: '+0.9%', sector: 'Énergie / Dividendes' },
+  { ticker: 'OR.PA', name: "L'Oréal", market: 'PARIS', price: 365.00, buyBase: 358.00, change: '+1.1%', sector: 'Cosmétique' },
+  { ticker: 'SAN.PA', name: 'Sanofi', market: 'PARIS', price: 92.40, buyBase: 90.00, change: '+1.7%', sector: 'Santé' },
+  { ticker: 'BNP.PA', name: 'BNP Paribas', market: 'PARIS', price: 66.80, buyBase: 64.50, change: '+2.3%', sector: 'Bancaire' }
 ];
 
 export async function POST(req: Request) {
@@ -25,7 +40,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'SCAN';
 
-    // 1. Charger le portefeuille
+    // 1. Récupération ou création du portefeuille
     let { data: portfolio } = await supabase.from('portfolio').select('*').eq('id', 1).maybeSingle();
     if (!portfolio) {
       const { data: created } = await supabase.from('portfolio').insert({
@@ -34,23 +49,55 @@ export async function POST(req: Request) {
       portfolio = created || { id: 1, cash_balance: 500, trading_mode: 'MANUAL', total_portfolio_value: 500 };
     }
 
-    // ACTION : RESET (Remise à zéro 500€)
+    // Gestion pérenne du mode (garde le mode actif même sur SCAN)
+    let currentMode = body.mode !== undefined ? body.mode : (portfolio.trading_mode || 'MANUAL');
+    if (action === 'SET_MODE') {
+      currentMode = body.mode || 'MANUAL';
+      await supabase.from('portfolio').update({ trading_mode: currentMode }).eq('id', 1);
+      portfolio.trading_mode = currentMode;
+    }
+
+    // ACTION : RESET
     if (action === 'RESET') {
       await supabase.from('positions').delete().neq('id', 0);
       await supabase.from('portfolio').update({ cash_balance: 500, total_portfolio_value: 500, trading_mode: 'MANUAL' }).eq('id', 1);
       portfolio.cash_balance = 500;
       portfolio.total_portfolio_value = 500;
       portfolio.trading_mode = 'MANUAL';
+      currentMode = 'MANUAL';
     }
 
-    // ACTION : CHANGEMENT DE MODE
-    if (action === 'SET_MODE') {
-      const newMode = body.mode || 'MANUAL';
-      await supabase.from('portfolio').update({ trading_mode: newMode }).eq('id', 1);
-      portfolio.trading_mode = newMode;
+    // ACTION : ACHAT MANUEL
+    let manualMsg = '';
+    if (action === 'MANUAL_BUY') {
+      const { ticker, name, price, amount } = body;
+      const spend = Number(amount || 50);
+      let curCash = Number(portfolio.cash_balance);
+
+      if (curCash < spend) {
+        return NextResponse.json({ error: 'Solde cash insuffisant pour cet achat.' }, { status: 400 });
+      }
+
+      const shares = Number((spend / price).toFixed(4));
+      const stopLoss = Number((price * 0.94).toFixed(2));
+
+      await supabase.from('positions').insert({
+        ticker,
+        company_name: name,
+        shares,
+        average_buy_price: price,
+        current_price: price,
+        current_value: spend,
+        stop_loss_price: stopLoss
+      });
+
+      curCash = Number((curCash - spend).toFixed(2));
+      await supabase.from('portfolio').update({ cash_balance: curCash }).eq('id', 1);
+      portfolio.cash_balance = curCash;
+      manualMsg = `Achat manuel validé : ${ticker} pour ${spend} €`;
     }
 
-    // ACTION : VENTE MANUELLE
+    // ACTION : VENTE D'UNE POSITION
     if (action === 'SELL') {
       const { positionId } = body;
       const { data: pos } = await supabase.from('positions').select('*').eq('id', positionId).single();
@@ -59,23 +106,39 @@ export async function POST(req: Request) {
         const curPrice = live ? live.price : pos.current_price;
         const totalSold = Number((Number(pos.shares) * curPrice).toFixed(2));
         const newCash = Number((Number(portfolio.cash_balance) + totalSold).toFixed(2));
-        
+
         await supabase.from('positions').delete().eq('id', pos.id);
         await supabase.from('portfolio').update({ cash_balance: newCash }).eq('id', 1);
         portfolio.cash_balance = newCash;
       }
     }
 
-    // 2. ANALYSES IA ET SIGNAUX
+    // 2. ANALYSE ET SÉLECTION D'UN PANEL RICHE DE RECOMMANDATIONS IA
     await supabase.from('ai_analyses').delete().neq('id', 0);
-    const analyses = [
+    const poolAnalyses = [
+      { 
+        ticker: 'PLTR', 
+        ai_name: 'Groq / Llama (Momentum)', 
+        signal: 'STRONG_BUY', 
+        confidence: 97, 
+        momentum: 'EXPLOSIF',
+        reasoning: 'Croissance fulgurante des contrats AIP dans le privé et la défense US. Momentum de points maximal.' 
+      },
       { 
         ticker: 'NVDA', 
         ai_name: 'Gemini (Fondamental)', 
         signal: 'STRONG_BUY', 
-        confidence: 96, 
-        momentum: 'EXPLOSIF',
-        reasoning: 'Rupture haussière majeure. Carnet de commandes record, momentum maximal. Cible prioritaire pour accumuler des points.' 
+        confidence: 95, 
+        momentum: 'TRÈS_FORT',
+        reasoning: 'Leader mondial incontesté des accélérateurs graphiques IA. Marges brutes de 75% intactes.' 
+      },
+      { 
+        ticker: 'SU.PA', 
+        ai_name: 'Gemini (Fondamental)', 
+        signal: 'STRONG_BUY', 
+        confidence: 92, 
+        momentum: 'TRÈS_FORT',
+        reasoning: 'Fournisseur d’infrastructure électrique clé pour les data centers IA mondiaux. Forte dynamique à Paris.' 
       },
       { 
         ticker: 'TSLA', 
@@ -83,77 +146,85 @@ export async function POST(req: Request) {
         signal: 'STRONG_BUY', 
         confidence: 91, 
         momentum: 'TRÈS_FORT',
-        reasoning: 'Volumes institutionnels massifs détectés. Cassure de résistance. Potentiel de gain très rapide.' 
+        reasoning: 'Rebond franc au-dessus de la résistance clé. Gros volumes acheteurs institutionnels.' 
+      },
+      { 
+        ticker: 'RMS.PA', 
+        ai_name: 'Gemini (Fondamental)', 
+        signal: 'BUY', 
+        confidence: 89, 
+        momentum: 'STABLE_HAUSSIER',
+        reasoning: 'Résilience absolue du modèle Hermès avec listes d’attente pleines. Risque très faible.' 
+      },
+      { 
+        ticker: 'MSFT', 
+        ai_name: 'Groq / Llama (Technique)', 
+        signal: 'BUY', 
+        confidence: 87, 
+        momentum: 'STABLE',
+        reasoning: 'Monétisation accélérée d’Azure et Copilot. Actif de fond de portefeuille de premier plan.' 
       },
       { 
         ticker: 'MC.PA', 
         ai_name: 'Gemini (Fondamental)', 
         signal: 'BUY', 
-        confidence: 84, 
-        momentum: 'MODÉRÉ',
-        reasoning: 'Bonne résilience défensive du luxe, croissance stable sans volatilité excessive.' 
+        confidence: 85, 
+        momentum: 'REBOND',
+        reasoning: 'Valorisation attractive après consolidation. Reprise confirmée sur le support des 600 €.' 
       },
       { 
-        ticker: 'AAPL', 
-        ai_name: 'Groq / Llama (Technique)', 
+        ticker: 'LLY', 
+        ai_name: 'Groq / Llama (Momentum)', 
         signal: 'BUY', 
-        confidence: 80, 
-        momentum: 'STABLE',
-        reasoning: 'Flux réguliers, consolidation saine au-dessus de la moyenne mobile.' 
+        confidence: 84, 
+        momentum: 'HAUSSIER',
+        reasoning: 'Monopole de fait sur les traitements métaboliques. Visibilité financière exceptionnelle.' 
       }
     ];
-    await supabase.from('ai_analyses').insert(analyses);
+    await supabase.from('ai_analyses').insert(poolAnalyses);
 
-    // 3. MOTEUR IA : ARBITRAGE, CONSCIENCE ET OBJECTIF DE POINTS
-    let logs: string[] = [];
-    const isAuto = portfolio.trading_mode === 'AUTO' || (action === 'SET_MODE' && body.mode === 'AUTO');
-
-    if (isAuto) {
+    // 3. MOTEUR AUTO : DIVERSIFICATION MULTI-TITRES & ARBITRAGE AGRESSIF
+    let autoLogs: string[] = [];
+    if (currentMode === 'AUTO') {
       let { data: positions } = await supabase.from('positions').select('*');
       positions = positions || [];
       let cash = Number(portfolio.cash_balance);
 
-      const topOpportunity = analyses.find(a => a.signal === 'STRONG_BUY' && a.confidence >= 90);
+      const topTarget = poolAnalyses.find(a => a.signal === 'STRONG_BUY' && a.confidence >= 94);
 
-      // --- LOGIQUE D'ARBITRAGE POUR GAGNER DES POINTS ---
-      // Si une opportunité explose (ex: NVDA ou TSLA) mais qu'on a moins de 50€ de cash :
-      // L'IA vend une action plus lente/secondaire pour tout réallouer sur le leader !
-      if (topOpportunity && cash < 50 && positions.length > 0) {
-        const posToLiquidate = positions.find(p => p.ticker !== topOpportunity.ticker);
-        if (posToLiquidate) {
-          const mInfo = MARKETS_DATA.find(m => m.ticker === posToLiquidate.ticker);
-          const pPrice = mInfo ? mInfo.price : posToLiquidate.current_price;
-          const recoveredCash = Number((Number(posToLiquidate.shares) * pPrice).toFixed(2));
-          
-          await supabase.from('positions').delete().eq('id', posToLiquidate.id);
-          cash = Number((cash + recoveredCash).toFixed(2));
-          logs.push(`Arbitrage Points IA : Vente de ${posToLiquidate.ticker} (+${recoveredCash}€) pour surpondérer ${topOpportunity.ticker}`);
-          
-          positions = positions.filter(p => p.id !== posToLiquidate.id);
+      // ARBITRAGE : Si une opportunité majeure surgit et que le cash est insuffisant, réallocation
+      if (topTarget && cash < 30 && positions.length > 0) {
+        const toLiquidate = positions.find(p => p.ticker !== topTarget.ticker && p.ticker !== 'NVDA' && p.ticker !== 'PLTR');
+        if (toLiquidate) {
+          const mInfo = MARKETS_DATA.find(m => m.ticker === toLiquidate.ticker);
+          const pPrice = mInfo ? mInfo.price : toLiquidate.current_price;
+          const recovered = Number((Number(toLiquidate.shares) * pPrice).toFixed(2));
+
+          await supabase.from('positions').delete().eq('id', toLiquidate.id);
+          cash = Number((cash + recovered).toFixed(2));
+          autoLogs.push(`Arbitrage Score IA : Vente de ${toLiquidate.ticker} (+${recovered}€) pour accumuler ${topTarget.ticker}`);
+          positions = positions.filter(p => p.id !== toLiquidate.id);
         }
       }
 
-      // --- ACHATS STRATÉGIQUES IA ---
-      for (const rec of analyses) {
-        if (rec.signal !== 'BUY' && rec.signal !== 'STRONG_BUY') continue;
+      // SÉLECTION MULTI-TITRES (peut détenir 6 à 10 actions en simultané)
+      for (const rec of poolAnalyses) {
         if (cash < 15) break;
-
-        const alreadyOwned = positions.some(p => p.ticker === rec.ticker);
+        const alreadyHas = positions.some(p => p.ticker === rec.ticker);
         const market = MARKETS_DATA.find(m => m.ticker === rec.ticker);
-        if (!market || alreadyOwned) continue;
+        if (!market || alreadyHas) continue;
 
-        // Allocation agressive si confiance maximale
-        let investAmount = 0;
-        if (rec.confidence >= 92) {
-          // Opportunité en or : peut investir jusqu'à 80% du cash restant ou la totalité si fin de portefeuille
-          investAmount = cash > 200 ? Math.min(220, cash * 0.7) : cash;
-        } else if (rec.confidence >= 85) {
-          investAmount = Math.min(100, cash * 0.5);
+        // Position sizing équilibré pour permettre à l'IA d'avoir un portefeuille complet
+        let targetAmount = 35;
+        if (rec.confidence >= 94) {
+          targetAmount = Math.min(80, cash * 0.45);
+        } else if (rec.confidence >= 88) {
+          targetAmount = Math.min(55, cash * 0.35);
         } else {
-          investAmount = Math.min(50, cash * 0.3);
+          targetAmount = Math.min(40, cash * 0.25);
         }
 
-        investAmount = Number(Math.max(15, Math.min(investAmount, cash)).toFixed(2));
+        const investAmount = Number(Math.max(15, Math.min(targetAmount, cash)).toFixed(2));
         if (investAmount < 15) continue;
 
         const buyPrice = market.buyBase || market.price;
@@ -172,7 +243,8 @@ export async function POST(req: Request) {
 
         if (!insErr) {
           cash = Number((cash - investAmount).toFixed(2));
-          logs.push(`Achat IA : ${market.ticker} (${investAmount}€ - Confiance ${rec.confidence}%)`);
+          positions.push({ ticker: market.ticker, current_value: investAmount });
+          autoLogs.push(`Achat IA : ${market.ticker} (${investAmount} € - ${market.market})`);
         }
       }
 
@@ -180,24 +252,21 @@ export async function POST(req: Request) {
       portfolio.cash_balance = cash;
     }
 
-    // 4. RÉCUPÉRATION FINALE DES POSITIONS ET COURS EN DIRECT
-    const { data: updatedPos } = await supabase.from('positions').select('*').order('created_at', { ascending: false });
-    
-    let totalInvested = 0;
+    // 4. RÉCUPÉRATION DES POSITIONS & CALCULS DU SCORE
+    const { data: finalPos } = await supabase.from('positions').select('*').order('created_at', { ascending: false });
     let totalPositionsVal = 0;
 
-    const formattedPositions = (updatedPos || []).map((p: any) => {
+    const formattedPositions = (finalPos || []).map((p: any) => {
       const live = MARKETS_DATA.find(m => m.ticker === p.ticker);
       const curPrice = live ? live.price : Number(p.current_price);
       const buyPrice = Number(p.average_buy_price);
       const shares = Number(p.shares);
-      
+
       const cost = Number((shares * buyPrice).toFixed(2));
       const curVal = Number((shares * curPrice).toFixed(2));
       const pnl = Number((curVal - cost).toFixed(2));
       const pnlPct = cost > 0 ? Number(((pnl / cost) * 100).toFixed(2)) : 0;
 
-      totalInvested += cost;
       totalPositionsVal += curVal;
 
       return {
@@ -211,21 +280,28 @@ export async function POST(req: Request) {
     });
 
     const totalPortfolioVal = Number((Number(portfolio.cash_balance) + totalPositionsVal).toFixed(2));
-    await supabase.from('portfolio').update({ total_portfolio_value: totalPortfolioVal }).eq('id', 1);
-    portfolio.total_portfolio_value = totalPortfolioVal;
+    await supabase.from('portfolio').update({ 
+      total_portfolio_value: totalPortfolioVal,
+      trading_mode: currentMode 
+    }).eq('id', 1);
 
-    // Calcul du score IA (Base 1 000 pts + 25 pts par euro de profit gagné)
+    portfolio.total_portfolio_value = totalPortfolioVal;
+    portfolio.trading_mode = currentMode;
+
     const netGains = totalPortfolioVal - 500;
     const aiScore = Math.max(0, Math.round(1000 + (netGains * 25)));
 
+    let finalMessage = manualMsg || (autoLogs.length > 0 ? autoLogs.join(' | ') : 'Marchés US & Paris analysés. Portefeuille optimisé.');
+
     return NextResponse.json({
       success: true,
-      message: logs.length > 0 ? logs.join(' | ') : 'Analyses synchronisées. Stratégie optimisée.',
+      message: finalMessage,
       portfolio,
       positions: formattedPositions,
-      analyses,
+      analyses: poolAnalyses,
       markets: MARKETS_DATA,
-      ai_score: aiScore
+      ai_score: aiScore,
+      notificationTrigger: autoLogs.length > 0 || !!manualMsg
     });
 
   } catch (err: any) {
