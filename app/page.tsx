@@ -13,21 +13,35 @@ export default function Dashboard() {
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [markets, setMarkets] = useState<any[]>([]);
   const [aiScore, setAiScore] = useState<number>(1000);
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
   
-  // Timer 5 minutes (300 secondes)
+  // Timer de 5 minutes
   const [countdown, setCountdown] = useState(300);
   const modeRef = useRef('MANUAL');
 
-  // Initialisation et mémoire active
+  // Double mémoire active : Restauration immédiate depuis le stockage local
   useEffect(() => {
-    const savedMode = localStorage.getItem('ai_trading_mode');
-    if (savedMode) {
-      modeRef.current = savedMode;
-      setPortfolio((prev: any) => ({ ...prev, trading_mode: savedMode }));
+    try {
+      const savedMode = localStorage.getItem('ai_trading_mode');
+      const savedPortfolio = localStorage.getItem('ai_trading_portfolio');
+      const savedPositions = localStorage.getItem('ai_trading_positions');
+
+      if (savedMode) {
+        modeRef.current = savedMode;
+        setPortfolio((prev: any) => ({ ...prev, trading_mode: savedMode }));
+      }
+      if (savedPortfolio) {
+        setPortfolio(JSON.parse(savedPortfolio));
+      }
+      if (savedPositions) {
+        setPositions(JSON.parse(savedPositions));
+      }
+    } catch (e) {
+      console.error('Erreur chargement local:', e);
     }
+
     refreshData();
   }, []);
 
@@ -54,14 +68,19 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/scan');
       const data = await res.json();
+      
       if (data.portfolio) {
         const savedMode = localStorage.getItem('ai_trading_mode');
         const finalMode = savedMode || data.portfolio.trading_mode || 'MANUAL';
         data.portfolio.trading_mode = finalMode;
         modeRef.current = finalMode;
         setPortfolio(data.portfolio);
+        localStorage.setItem('ai_trading_portfolio', JSON.stringify(data.portfolio));
       }
-      if (data.positions) setPositions(data.positions);
+      if (data.positions && data.positions.length > 0) {
+        setPositions(data.positions);
+        localStorage.setItem('ai_trading_positions', JSON.stringify(data.positions));
+      }
       if (data.analyses) setAnalyses(data.analyses);
       if (data.markets) setMarkets(data.markets);
       if (data.ai_score !== undefined) setAiScore(data.ai_score);
@@ -71,8 +90,8 @@ export default function Dashboard() {
   };
 
   const handleAction = async (action: string, payload: any = {}, actionKey = 'action') => {
-    if (actionKey !== 'silent') setLoadingAction(actionKey);
-    setStatusMsg('Exécution de l’ordre...');
+    if (actionKey !== 'silent') setLoadingKey(actionKey);
+    setStatusMsg('Transmission au courtier en direct...');
     try {
       const activeMode = payload.mode !== undefined ? payload.mode : modeRef.current;
       const res = await fetch('/api/scan', {
@@ -90,17 +109,21 @@ export default function Dashboard() {
       if (data.portfolio) {
         data.portfolio.trading_mode = activeMode;
         setPortfolio(data.portfolio);
+        localStorage.setItem('ai_trading_portfolio', JSON.stringify(data.portfolio));
       }
-      if (data.positions) setPositions(data.positions);
+      if (data.positions) {
+        setPositions(data.positions);
+        localStorage.setItem('ai_trading_positions', JSON.stringify(data.positions));
+      }
       if (data.analyses) setAnalyses(data.analyses);
       if (data.markets) setMarkets(data.markets);
       if (data.ai_score !== undefined) setAiScore(data.ai_score);
       if (data.message) setStatusMsg(data.message);
 
     } catch (err: any) {
-      setStatusMsg('Erreur réseau : ' + err.message);
+      setStatusMsg('Erreur de communication : ' + err.message);
     } finally {
-      setLoadingAction(null);
+      setLoadingKey(null);
     }
   };
 
@@ -119,6 +142,7 @@ export default function Dashboard() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // Calculs financiers réels pour les cases
   const cash = Number(portfolio?.cash_balance ?? 500);
   const currentPositionsVal = positions.reduce((acc, p) => acc + (Number(p.current_value) || 0), 0);
   const totalInvested = positions.reduce((acc, p) => acc + (Number(p.cost_basis) || 0), 0);
@@ -144,7 +168,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>AI Trading Manager</h1>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.8rem' }}>Wall Street & Euronext Paris • Moteur Autonome</p>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.8rem' }}>Wall Street & Paris • Double Mémoire Sécurisée</p>
             </div>
           </div>
 
@@ -172,7 +196,7 @@ export default function Dashboard() {
             {/* SWITCH AUTO / MANUEL */}
             <button
               onClick={() => toggleMode(isAuto ? 'MANUAL' : 'AUTO')}
-              disabled={loadingAction === 'mode'}
+              disabled={loadingKey === 'mode'}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 backgroundColor: isAuto ? '#dc2626' : '#10b981',
@@ -186,20 +210,25 @@ export default function Dashboard() {
             {/* SCAN IA */}
             <button
               onClick={() => handleAction('SCAN', {}, 'scan')}
-              disabled={loadingAction === 'scan'}
+              disabled={loadingKey === 'scan'}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 backgroundColor: '#1e293b', color: '#38bdf8', border: '1px solid #334155',
                 padding: '0.65rem 1rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem'
               }}>
-              <RefreshCw size={15} className={loadingAction === 'scan' ? 'animate-spin' : ''} />
+              <RefreshCw size={15} className={loadingKey === 'scan' ? 'animate-spin' : ''} />
               Scan Marchés
             </button>
 
             {/* RESET */}
             <button
-              onClick={() => { if (confirm('Remettre le portefeuille à 500 € ?')) handleAction('RESET', {}, 'reset'); }}
-              disabled={loadingAction === 'reset'}
+              onClick={() => {
+                if (confirm('Réinitialiser le solde à 500 € ?')) {
+                  localStorage.removeItem('ai_trading_positions');
+                  handleAction('RESET', {}, 'reset');
+                }
+              }}
+              disabled={loadingKey === 'reset'}
               title="Réinitialiser"
               style={{
                 backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
@@ -218,7 +247,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* STATS HAUT GAUCHE */}
+        {/* STATS HAUT GAUCHE : TOUTES LES CASES VISIBLES */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
           
           <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
@@ -228,16 +257,16 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>CAPITAL PLACÉ</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#38bdf8' }}>
+          <div style={{ backgroundColor: '#111827', border: '1px solid #10b981', padding: '0.85rem 1rem', borderRadius: '10px' }}>
+            <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 700 }}>CAPITAL PLACÉ (ACTIONS)</span>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#10b981' }}>
               {currentPositionsVal.toFixed(2)} €
             </div>
           </div>
 
           <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>VALEUR TOTALE</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#10b981' }}>
+            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>VALEUR TOTALE COMPTE</span>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#38bdf8' }}>
               {Number(portfolio?.total_portfolio_value ?? 500).toFixed(2)} €
             </div>
           </div>
@@ -251,20 +280,20 @@ export default function Dashboard() {
 
         </div>
 
-        {/* 1ER BLOC : VOS ACTIONS ACHETÉES (PREMIER PLAN) */}
+        {/* 1ER BLOC : VOS ACTIONS DÉTENUES (AU PREMIER PLAN) */}
         <section style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Layers size={20} color="#10b981" />
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Vos Actions Détenues ({positions.length})</h2>
             </div>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Mise à jour en temps réel</span>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Mise à jour automatique</span>
           </div>
 
           <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', overflow: 'hidden' }}>
             {positions.length === 0 ? (
               <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
-                Aucune action détenue. Activez le <strong>Mode AUTO</strong> pour un panier automatique, ou achetez manuellement ci-dessous.
+                Aucune action détenue pour l'instant. Cliquez sur <strong>Acheter (40€)</strong> ci-dessous ou activez le <strong>Mode AUTO</strong>.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -311,13 +340,13 @@ export default function Dashboard() {
                           <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
                             <button
                               onClick={() => handleAction('SELL', { positionId: pos.id }, `sell-${pos.id}`)}
-                              disabled={loadingAction === `sell-${pos.id}`}
+                              disabled={loadingKey === `sell-${pos.id}`}
                               style={{
                                 backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
                                 border: '1px solid rgba(239, 68, 68, 0.25)', padding: '0.35rem 0.75rem',
                                 borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700
                               }}>
-                              {loadingAction === `sell-${pos.id}` ? '...' : 'Vendre'}
+                              {loadingKey === `sell-${pos.id}` ? '...' : 'Vendre'}
                             </button>
                           </td>
                         </tr>
@@ -375,7 +404,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 3E BLOC : MARCHÉS SUIVIS (ACHATS MULTIPLES RAPIDES) */}
+        {/* 3E BLOC : MARCHÉS SUIVIS (ACHATS MANUELS MULTIPLES) */}
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -404,7 +433,7 @@ export default function Dashboard() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '0.75rem' }}>
             {filteredMarkets.map((m) => {
-              const isBuyingThis = loadingAction === `buy-${m.ticker}`;
+              const isBuying = loadingKey === `buy-${m.ticker}`;
               return (
                 <div key={m.ticker} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
@@ -422,15 +451,15 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => handleAction('MANUAL_BUY', { ticker: m.ticker, name: m.name, price: m.price, amount: 40 }, `buy-${m.ticker}`)}
-                    disabled={isBuyingThis || cash < 40}
+                    disabled={isBuying || cash < 40}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.3rem',
                       backgroundColor: cash >= 40 ? '#2563eb' : '#334155',
                       color: '#fff', border: 'none', padding: '0.5rem 0.8rem', borderRadius: '6px',
-                      fontSize: '0.8rem', fontWeight: 700, cursor: cash >= 40 && !isBuyingThis ? 'pointer' : 'not-allowed'
+                      fontSize: '0.8rem', fontWeight: 700, cursor: cash >= 40 && !isBuying ? 'pointer' : 'not-allowed'
                     }}>
                     <ShoppingCart size={14} />
-                    {isBuyingThis ? 'Achat...' : 'Acheter (40€)'}
+                    {isBuying ? '...' : 'Acheter (40€)'}
                   </button>
                 </div>
               );
