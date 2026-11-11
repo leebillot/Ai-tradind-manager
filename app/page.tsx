@@ -6,7 +6,7 @@ import {
   Menu, X, Bot, TrendingUp, RefreshCw, Zap, Layers, 
   RotateCcw, Globe, LogOut, CheckCircle, ShieldAlert, 
   Sparkles, Plus, Trash2, ArrowUpRight, ArrowDownRight, Clock,
-  Search, Flame, LineChart, ChevronRight, History, Landmark,
+  Search, Flame, LineChart, ChevronDown, ChevronUp, History, Landmark,
   HelpCircle, Info
 } from 'lucide-react';
 
@@ -23,38 +23,14 @@ function getBrowserSupabase() {
 const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
-  'Ouverture': {
-    title: 'Cours d’Ouverture',
-    desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.'
-  },
-  'Max.': {
-    title: 'Plus Haut de la Séance',
-    desc: 'Prix maximum atteint par l’action aujourd’hui pendant les heures de cotation.'
-  },
-  'Min.': {
-    title: 'Plus Bas de la Séance',
-    desc: 'Prix le plus bas auquel l’action s’est échangée aujourd’hui.'
-  },
-  'Vol.': {
-    title: 'Volume Échangé',
-    desc: 'Nombre total de titres achetés et vendus au cours de la séance. Un volume massif confirme la force réelle d’un mouvement.'
-  },
-  'PER': {
-    title: 'PER (Price Earnings Ratio)',
-    desc: 'Ratio Cours/Bénéfice. Indique combien de fois les investisseurs paient le bénéfice annuel de l’entreprise. Un PER bas peut indiquer une sous-évaluation, un PER haut une forte croissance espérée.'
-  },
-  'Cap. bours.': {
-    title: 'Capitalisation Boursière',
-    desc: 'Valeur marchande totale de l’entreprise en bourse (nombre total d’actions multiplié par le prix actuel).'
-  },
-  'H 52 sem.': {
-    title: 'Plus Haut sur 52 Semaines (1 An)',
-    desc: 'Le record absolu de prix atteint par cette action sur les 12 derniers mois.'
-  },
-  'B 52 sem.': {
-    title: 'Plus Bas sur 52 Semaines (1 An)',
-    desc: 'Le point le plus bas touché par cette action sur les 12 derniers mois.'
-  }
+  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction négociée au moment où la bourse a ouvert ce matin.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint par l’action aujourd’hui. Le cours actuel ne peut jamais le dépasser.' },
+  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré pour cette action aujourd’hui.' },
+  'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
+  'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
+  'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse (nombre d’actions × prix actuel).' },
+  'H 52 sem.': { title: 'Plus Haut 52 Semaines', desc: 'Le record absolu de prix atteint par cette action sur les 12 derniers mois.' },
+  'B 52 sem.': { title: 'Plus Bas 52 Semaines', desc: 'Le point le plus bas touché par cette action sur les 12 derniers mois.' }
 };
 
 export default function App() {
@@ -70,6 +46,9 @@ export default function App() {
   const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
   const [simPositions, setSimPositions] = useState<any[]>([]);
 
+  // Accordéon des actions : mémorise quelles actions sont déroulées en grand
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+
   // Filtres
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
@@ -81,15 +60,14 @@ export default function App() {
   const [newPrice, setNewPrice] = useState('');
   const [newThreshold, setNewThreshold] = useState('3.0');
 
-  // Modal Graphique Style Apple Bourse
+  // Modal Graphique
   const [chartStock, setChartStock] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | '1Y'>('1D');
-  const [scrubPoint, setScrubPoint] = useState<{ price: number; label: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
   // Timer
-  const [countdown, setCountdown] = useState(300);
+  const [countdown, setCountdown] = useState(60); // Scan toutes les 60 secondes (1 minute)
 
   // Auth
   const [authEmail, setAuthEmail] = useState('');
@@ -110,12 +88,13 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Décompte 60 secondes pour rafraîchissement en direct à 1 minute près
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           fetchData();
-          return 300;
+          return 60;
         }
         return prev - 1;
       });
@@ -167,6 +146,14 @@ export default function App() {
     }
   };
 
+  // Bascule d'ouverture/fermeture accordéon
+  const toggleCardExpand = (ticker: string) => {
+    setExpandedCards(prev => ({
+      ...prev,
+      [ticker]: !prev[ticker]
+    }));
+  };
+
   const handleSelectStock = (stock: any) => {
     setSelectedStock(stock);
     setNewPrice(stock.price.toString());
@@ -214,7 +201,7 @@ export default function App() {
   const handleRunSimulation = async () => {
     if (!user) return;
     setLoading(true);
-    setStatusMsg('Gemini et Groq scannent le marché...');
+    setStatusMsg('Gemini et Groq scannent les cours réels...');
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -255,6 +242,7 @@ export default function App() {
 
   const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
 
+  // Style des badges par code couleur strict
   const getBadgeStyle = (colorType: string) => {
     switch (colorType) {
       case 'GREEN_DARK':
@@ -262,69 +250,55 @@ export default function App() {
       case 'GREEN_LIGHT':
         return { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#34d399', label: 'ACHAT' };
       case 'YELLOW':
-        return { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', text: '#fbbf24', label: 'ATTENTION / CONSERVER' };
+        return { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', text: '#fbbf24', label: 'ATTENTION' };
       case 'RED':
       default:
         return { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#f87171', label: 'DÉCONSEILLÉ' };
     }
   };
 
-  // RENDU ULTRA-RÉALISTE DU GRAPHIQUE APPLE BOURSE (QUADRILLAGE + COURBE DENSE + 24H)
-  const renderAppleStocksProChart = (chartData: any, isUp: boolean) => {
+  // GRAPHIQUE APPLE BOURSE QUADRILLÉ
+  const renderAppleStocksChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
     const min = chartData.low;
     const max = chartData.high;
     const range = max - min || 1;
     const w = 280;
-    const h = 200;
+    const h = 180;
 
-    // Coordonnées de la courbe haute densité (70+ points)
     const coords = points.map((pt: any, idx: number) => {
       const x = (idx / (points.length - 1)) * w;
-      const y = h - ((pt.price - min) / range) * (h - 40) - 20;
+      const y = h - ((pt.price - min) / range) * (h - 35) - 15;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
 
-    const strokeColor = isUp ? '#34c759' : '#ff3b30'; // Vert & Rouge Apple iOS natifs
-    const fillColor = isUp ? 'rgba(52, 199, 89, 0.18)' : 'rgba(255, 59, 48, 0.18)';
+    const strokeColor = isUp ? '#34c759' : '#ff3b30';
+    const fillColor = isUp ? 'rgba(52, 199, 89, 0.16)' : 'rgba(255, 59, 48, 0.16)';
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: number[] = chartData.scaleSteps || [max, min];
 
     return (
-      <div style={{ backgroundColor: '#000000', borderRadius: '12px', padding: '1rem 0.5rem 0.5rem 0.5rem', border: '1px solid #1c1c1e', boxSizing: 'border-box' }}>
-        
-        {/* GRILLE + COURBE + AXE Y DROITE */}
+      <div style={{ backgroundColor: '#000000', borderRadius: '12px', padding: '0.8rem 0.4rem 0.4rem 0.4rem', border: '1px solid #1c1c1e', boxSizing: 'border-box' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
-          {/* ZONE SVG */}
-          <div 
-            style={{ position: 'relative', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
-            onPointerMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              const idx = Math.round(ratio * (points.length - 1));
-              if (points[idx]) setScrubPoint(points[idx]);
-            }}
-            onPointerLeave={() => setScrubPoint(null)}>
-            
-            {/* LIGNES HORIZONTALES DU QUADRILLAGE (STYLE IMAGE 1) */}
+          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {/* LIGNES DU QUADRILLAGE HORIZONTALES */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
-            {/* LIGNES VERTICALES DU QUADRILLAGE ALIGNÉES SUR 11, 13, 15, 17 */}
+            {/* LIGNES VERTICALES QUADRILLAGE */}
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
 
-            {/* SVG TRACÉ DENSE */}
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
                 <linearGradient id="appleGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={strokeColor} stopOpacity="0.35" />
-                  <stop offset="85%" stopColor={strokeColor} stopOpacity="0.05" />
+                  <stop offset="0%" stopColor={strokeColor} stopOpacity="0.32" />
+                  <stop offset="85%" stopColor={strokeColor} stopOpacity="0.04" />
                   <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
                 </linearGradient>
               </defs>
@@ -333,8 +307,8 @@ export default function App() {
             </svg>
           </div>
 
-          {/* ÉCHELLE DES PRIX À DROITE (IMAGE 1 EXACTE) */}
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.5rem' }}>
+          {/* AXE Y DROITE */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.4rem' }}>
             {scaleSteps.map((val, idx) => (
               <span key={idx}>{val.toFixed(2).replace('.', ',')}</span>
             ))}
@@ -342,13 +316,12 @@ export default function App() {
 
         </div>
 
-        {/* AXE X TEMPOREL (11, 13, 15, 17) */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.65rem 0.5rem 0.2rem 0.5rem', fontSize: '0.75rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.5rem' }}>
+        {/* AXE X TEMPOREL (24h) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
           ))}
         </div>
-
       </div>
     );
   };
@@ -367,7 +340,7 @@ export default function App() {
             <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>AI Trading Manager</h2>
           </div>
           <p style={{ color: '#8e8e93', fontSize: '0.85rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
-            Connectez-vous pour débloquer votre sentinelle boursière et la détection de pépites.
+            Connectez-vous pour accéder au cours en direct et aux avis d'achat de l'IA.
           </p>
 
           <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -420,7 +393,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000000', color: '#f5f5f7', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
-      {/* HEADER iOS AVEC TIMER 24H */}
+      {/* HEADER iOS */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
@@ -435,9 +408,10 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          {/* Actualisation en direct à 1 minute près */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem' }}>
             <Clock size={12} color="#2997ff" />
-            <span style={{ color: '#8e8e93' }}>Scan :</span>
+            <span style={{ color: '#8e8e93' }}>1 min :</span>
             <strong style={{ color: '#fff' }}>{formatTimer(countdown)}</strong>
           </div>
 
@@ -456,7 +430,7 @@ export default function App() {
           <button
             onClick={() => { setActiveTab('MARKETS'); setMenuOpen(false); }}
             style={{ padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: activeTab === 'MARKETS' ? '#0071e3' : '#2c2c2e', color: '#fff', fontWeight: 700, textAlign: 'left', cursor: 'pointer' }}>
-            1. Analyse & Détecteur de Pépites
+            1. Analyse du Marché
           </button>
           <button
             onClick={() => { setActiveTab('AUTO_SIM'); setMenuOpen(false); }}
@@ -478,21 +452,21 @@ export default function App() {
         </div>
       )}
 
-      {/* MAIN */}
+      {/* CONTENU PRINCIPAL */}
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : DÉTECTEUR DE PÉPITES */}
+        {/* ONGLET 1 : ANALYSE DU MARCHÉ (FORMAT COMPACT EN ACCORDÉON) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
                 <Flame size={20} color="#ff9f0a" />
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Détecteur de Pépites</h2>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Marchés en Direct</h2>
               </div>
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
-                Marchés en direct, catalyseurs et recommandations de l'IA par code couleur.
+                Données réelles Yahoo Finance synchronisées à la minute près.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -512,82 +486,141 @@ export default function App() {
               </div>
             </div>
 
-            {/* RECHERCHE */}
-            <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
+            {/* BARRE DE RECHERCHE */}
+            <div style={{ position: 'relative', width: '100%', marginBottom: '1rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 value={marketSearchQuery}
                 onChange={e => setMarketSearchQuery(e.target.value)}
-                placeholder="Rechercher (Dassault, DSY.PA, Nvidia, ASTS...)"
+                placeholder="Rechercher (DSY.PA, Dassault, Nvidia, Airbus...)"
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            {/* LISTE ACTIONS */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {/* LISTE DENSE ET COMPACTE (FORMAT ACCORDÉON) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
+                const isExpanded = !!expandedCards[m.ticker];
+
                 return (
                   <div
                     key={m.ticker}
-                    onClick={() => { setChartStock(m); setScrubPoint(null); }}
                     style={{
                       backgroundColor: '#1c1c1e',
-                      border: `1px solid ${badge.border}`,
-                      borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column',
-                      gap: '0.65rem', boxSizing: 'border-box', cursor: 'pointer'
+                      border: `1px solid ${isExpanded ? badge.border : '#2c2c2e'}`,
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                      transition: 'all 0.2s ease',
+                      boxSizing: 'border-box'
                     }}>
                     
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
+                    {/* LIGNE PRINCIPALE COMPACTE (TOUJOURS VISIBLE) */}
+                    <div
+                      style={{
+                        padding: '0.75rem 0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer'
+                      }}>
+                      
+                      {/* IDENTIFIANT & NOM */}
+                      <div
+                        onClick={() => setChartStock(m)}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span style={{ fontSize: '1.15rem', fontWeight: 800 }}>{m.ticker}</span>
-                          <span style={{ fontSize: '0.65rem', backgroundColor: '#2c2c2e', padding: '0.15rem 0.4rem', borderRadius: '4px', color: '#8e8e93' }}>
+                          <strong style={{ fontSize: '1.05rem', color: '#fff' }}>{m.ticker}</strong>
+                          <span style={{ fontSize: '0.65rem', backgroundColor: '#2c2c2e', padding: '0.1rem 0.35rem', borderRadius: '4px', color: '#8e8e93' }}>
                             {m.market === 'US' ? 'US' : 'PARIS'}
                           </span>
-                          <span style={{ fontSize: '0.65rem', backgroundColor: 'rgba(41, 151, 255, 0.15)', color: '#2997ff', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                            {m.category}
-                          </span>
                         </div>
-                        <div style={{ fontSize: '0.8rem', color: '#8e8e93', marginTop: '0.15rem' }}>{m.name}</div>
+                        <span style={{ fontSize: '0.75rem', color: '#8e8e93', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+                          {m.name}
+                        </span>
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 800 }}>{m.priceFormatted} €</div>
-                        <div style={{ fontSize: '0.85rem', color: m.changeRaw >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
+                      {/* COURS EN DIRECT & VARIATION */}
+                      <div 
+                        onClick={() => setChartStock(m)}
+                        style={{ textAlign: 'right', marginRight: '0.6rem' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{m.priceFormatted} €</div>
+                        <div style={{ fontSize: '0.78rem', color: m.changeRaw >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
                           {m.change}
                         </div>
                       </div>
-                    </div>
 
-                    {/* BADGE CODE COULEUR */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.45rem 0.75rem', borderRadius: '6px',
-                      backgroundColor: badge.bg, border: `1px solid ${badge.border}`
-                    }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.75rem', color: badge.text }}>
+                      {/* PASTILLE RECOMMANDATION IA */}
+                      <div 
+                        onClick={() => setChartStock(m)}
+                        style={{
+                          padding: '0.3rem 0.55rem', borderRadius: '6px',
+                          backgroundColor: badge.bg, border: `1px solid ${badge.border}`,
+                          fontSize: '0.7rem', fontWeight: 800, color: badge.text,
+                          marginRight: '0.6rem', textAlign: 'center', whiteSpace: 'nowrap'
+                        }}>
                         {badge.label}
-                      </span>
-                      <span style={{ fontSize: '0.7rem', color: '#8e8e93' }}>
-                        Confiance : <strong style={{ color: '#fff' }}>{m.aiConfidence}%</strong>
-                      </span>
+                      </div>
+
+                      {/* PETITE FLÈCHE VERS LE BAS / HAUT POUR DÉROULER EN GRAND */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCardExpand(m.ticker);
+                        }}
+                        style={{
+                          background: '#2c2c2e', border: 'none', color: '#fff',
+                          borderRadius: '50%', width: '28px', height: '28px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', padding: 0
+                        }}>
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+
                     </div>
 
-                    <div style={{ backgroundColor: '#2c2c2e', padding: '0.65rem', borderRadius: '8px', fontSize: '0.8rem', color: '#f5f5f7', lineHeight: '1.35' }}>
-                      {m.aiAdvice}
-                    </div>
+                    {/* FENÊTRE DÉROULÉE EN GRAND (ACCORDÉON) */}
+                    {isExpanded && (
+                      <div style={{
+                        padding: '0.75rem 0.9rem',
+                        borderTop: '1px solid #2c2c2e',
+                        backgroundColor: '#161618',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.65rem'
+                      }}>
+                        {/* AVIS DE L'IA */}
+                        <div style={{ backgroundColor: '#232326', padding: '0.65rem', borderRadius: '8px', fontSize: '0.8rem', color: '#f5f5f7', lineHeight: '1.4' }}>
+                          <span style={{ color: '#2997ff', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
+                            💡 Diagnostic et Avis IA
+                          </span>
+                          {m.aiAdvice}
+                        </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#2997ff' }}>
-                      <span>📈 Toucher pour ouvrir le graphique Bourse Apple</span>
-                      <ChevronRight size={14} />
-                    </div>
+                        {/* CATALYSEUR FINANCIER */}
+                        <div style={{ fontSize: '0.78rem', color: '#8e8e93' }}>
+                          ⚡ <strong>Catalyseur de marché :</strong> {m.catalyst}
+                        </div>
+
+                        {/* BOUTON D'OUVERTURE GRAPHIQUE PLEIN ÉCRAN */}
+                        <button
+                          onClick={() => setChartStock(m)}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                            padding: '0.55rem', backgroundColor: '#0071e3', color: '#fff',
+                            border: 'none', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
+                          }}>
+                          <LineChart size={15} /> Voir le graphique Bourse en grand
+                        </button>
+                      </div>
+                    )}
 
                   </div>
                 );
               })}
             </div>
+
           </div>
         )}
 
@@ -658,7 +691,7 @@ export default function App() {
                 simPositions.map((p) => {
                   const isProfit = Number(p.pnl) >= 0;
                   return (
-                    <div key={p.id} onClick={() => { setChartStock(p); setScrubPoint(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
+                    <div key={p.id} onClick={() => setChartStock(p)} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <strong style={{ fontSize: '1rem' }}>{p.company_name}</strong>
@@ -728,7 +761,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* RECHERCHE */}
+            {/* FORMULAIRE RECHERCHE */}
             <div style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Ajouter une action à surveiller</span>
 
@@ -863,7 +896,7 @@ export default function App() {
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
                       <button
-                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                        onClick={() => setChartStock(p)}
                         style={{ background: 'none', border: 'none', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <LineChart size={14} /> Voir le graphique Bourse
                       </button>
@@ -886,7 +919,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE EXACT (COMME DSY.PA) */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE EXACT */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -899,7 +932,6 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE EXACT APPLE BOURSE AVEC CURSEUR INTERACTIF */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -913,11 +945,8 @@ export default function App() {
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
-                {/* PRIX EN DIRECT OU PRIX DU POINT SURVOLÉ */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
-                    {scrubPoint ? scrubPoint.price.toFixed(2).replace('.', ',') : (chartStock.priceFormatted || chartStock.price || chartStock.current_price)} €
-                  </span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>{chartStock.priceFormatted || chartStock.price || chartStock.current_price} €</span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
                     {chartStock.change || `+${chartStock.pnl_percent}%`}
                   </span>
@@ -929,12 +958,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* SÉLECTEUR DE PÉRIODE OFFICIEL */}
+            {/* SÉLECTEUR DE PÉRIODE */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1D', '1W', '1M', '3M', '6M', '1Y'] as const).map(p => (
                 <button
                   key={p}
-                  onClick={() => { setChartPeriod(p); setScrubPoint(null); }}
+                  onClick={() => setChartPeriod(p)}
                   style={{
                     padding: '0.45rem 0', borderRadius: '8px', border: 'none',
                     backgroundColor: chartPeriod === p ? '#3a3a3c' : 'transparent',
@@ -946,14 +975,14 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE GRAPHIQUE PRÉCIS HAUTE DENSITÉ */}
+            {/* LE GRAPHIQUE PRÉCIS APPLE BOURSE */}
             {chartStock.history ? (
-              renderAppleStocksProChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
+              renderAppleStocksChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du graphique...</div>
             )}
 
-            {/* STATISTIQUES FINANCIÈRES CLIQUABLES */}
+            {/* DONNÉES FINANCIÈRES CLIQUABLES */}
             <div style={{ marginTop: '1.25rem', borderTop: '1px solid #1c1c1e', paddingTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
                 <span style={{ fontSize: '0.75rem', color: '#8e8e93', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -964,13 +993,13 @@ export default function App() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem 0.5rem', fontSize: '0.8rem' }}>
                 {[
-                  { label: 'Ouverture', val: `${chartStock.open || '25,22'} €` },
+                  { label: 'Ouverture', val: `${chartStock.open} €` },
                   { label: 'Vol.', val: chartStock.volume || '360,1 k' },
                   { label: 'H 52 sem.', val: chartStock.h52 || '38,20 €' },
-                  { label: 'Max.', val: `${chartStock.high || '25,64'} €` },
+                  { label: 'Max.', val: `${chartStock.high} €` },
                   { label: 'PER', val: chartStock.per || '25,77' },
                   { label: 'B 52 sem.', val: chartStock.b52 || '24,10 €' },
-                  { label: 'Min.', val: `${chartStock.low || '25,16'} €` },
+                  { label: 'Min.', val: `${chartStock.low} €` },
                   { label: 'Cap. bours.', val: chartStock.marketCap || '33,53 Md €' }
                 ].map((item, idx) => (
                   <div
@@ -978,7 +1007,7 @@ export default function App() {
                     onClick={() => setActiveDefinition(METRIC_DEFINITIONS[item.label] || null)}
                     style={{
                       backgroundColor: '#1c1c1e', padding: '0.6rem 0.5rem', borderRadius: '8px',
-                      cursor: 'pointer', border: '1px solid #2c2c2e', transition: '0.15s'
+                      cursor: 'pointer', border: '1px solid #2c2c2e'
                     }}>
                     <span style={{ color: '#8e8e93', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                       {item.label} <Info size={10} color="#2997ff" />
