@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Menu, X, Bot, TrendingUp, RefreshCw, Zap, Layers, 
   RotateCcw, Globe, LogOut, CheckCircle, ShieldAlert, 
   Sparkles, Plus, Trash2, ArrowUpRight, ArrowDownRight, Clock,
   Search, Flame, LineChart, ChevronDown, ChevronUp, History, Landmark,
-  HelpCircle, Info, Filter, ArrowUpDown
+  HelpCircle, Info, Filter
 } from 'lucide-react';
 
 function getBrowserSupabase() {
@@ -23,12 +23,12 @@ function getBrowserSupabase() {
 const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
-  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la séance ce matin.' },
+  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction négociée au moment où la bourse a ouvert ce matin.' },
   'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui sur la séance.' },
-  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré aujourd’hui sur la séance.' },
+  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré pour cette action aujourd’hui.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
-  'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse (nombre d’actions × prix actuel).' },
+  'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse.' },
   'H 52 sem.': { title: 'Plus Haut 52 Semaines', desc: 'Le record absolu de prix atteint par cette action sur les 12 derniers mois.' },
   'B 52 sem.': { title: 'Plus Bas 52 Semaines', desc: 'Le plancher de prix touché par cette action sur les 12 derniers mois.' }
 };
@@ -47,31 +47,34 @@ export default function App() {
   const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
   const [simPositions, setSimPositions] = useState<any[]>([]);
 
-  // Accordéon des actions (Marchés et Portefeuille)
+  // Accordéon des actions
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
 
-  // Filtres Bourse & Tri Leboncoin
+  // Filtres
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
-  const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'GAIN_1Y' | 'DROP_24H' | 'DROP_1Y'>('DEFAULT');
+  const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'DROP_24H'>('DEFAULT');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
 
-  // Mon Portefeuille Recherche
+  // Mon Portefeuille
   const [portfolioSearchQuery, setPortfolioSearchQuery] = useState('');
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [newShares, setNewShares] = useState('5');
   const [newPrice, setNewPrice] = useState('');
   const [newThreshold, setNewThreshold] = useState('3.0');
 
-  // Modal Graphique
+  // Modal Graphique Connecté à Yahoo Finance
   const [chartStock, setChartStock] = useState<any>(null);
-  const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1H');
+  const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1D');
+  const [realChartData, setRealChartData] = useState<any>(null);
+  const [chartLoading, setChartLoading] = useState(false);
   const [scrubPoint, setScrubPoint] = useState<{ price: number; timeStr: string; x: number; y: number } | null>(null);
+
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
   // Timers
-  const [lastMarketTime, setLastMarketTime] = useState<string>('18h13');
+  const [lastMarketTime, setLastMarketTime] = useState<string>('18h41');
   const [aiCountdown, setAiCountdown] = useState(300);
 
   // Auth
@@ -124,19 +127,41 @@ export default function App() {
       
       const hFr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
       setLastMarketTime(hFr);
-
-      if (chartStock) {
-        const updated = (data.markets || []).find((m: any) => m.ticker === chartStock.ticker);
-        if (updated) setChartStock(updated);
-      }
     } catch (err) {
       console.error(err);
     }
   };
 
+  // APPEL DIRECT YAHOO FINANCE À LA DEMANDE (SANS SIMULATION ARTIFICIELLE)
+  const fetchLiveChartData = async (ticker: string, period: string) => {
+    setChartLoading(true);
+    setScrubPoint(null);
+    try {
+      const res = await fetch(`/api/scan?chartTicker=${encodeURIComponent(ticker)}&chartPeriod=${period}`);
+      const data = await res.json();
+      if (data.chart) {
+        setRealChartData(data.chart);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
+  // Charge les vraies données dès que la modale s'ouvre ou que la période change
+  useEffect(() => {
+    if (chartStock) {
+      fetchLiveChartData(chartStock.ticker, chartPeriod);
+    }
+  }, [chartStock?.ticker, chartPeriod]);
+
   const handleManualRefresh = async () => {
     setRefreshingLive(true);
     await fetchData(user?.id);
+    if (chartStock) {
+      await fetchLiveChartData(chartStock.ticker, chartPeriod);
+    }
     setRefreshingLive(false);
   };
 
@@ -253,7 +278,6 @@ export default function App() {
     return q.split(/\s+/).some(w => w.length > 2 && corpus.includes(w));
   };
 
-  // COMBINAISON DU FILTRE DE MARCHÉ + RECHERCHE + TRI LEBONCOIN
   const filteredAndSortedMarkets = markets
     .filter(m => {
       const matchFilter = marketFilter === 'ALL' || m.market === marketFilter;
@@ -262,9 +286,7 @@ export default function App() {
     .sort((a, b) => {
       if (sortFilter === 'GAIN_24H') return b.changeRaw - a.changeRaw;
       if (sortFilter === 'DROP_24H') return a.changeRaw - b.changeRaw;
-      if (sortFilter === 'GAIN_1Y') return (b.change1YRaw || 0) - (a.change1YRaw || 0);
-      if (sortFilter === 'DROP_1Y') return (a.change1YRaw || 0) - (b.change1YRaw || 0);
-      return 0; // Par défaut
+      return 0;
     });
 
   const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
@@ -283,8 +305,8 @@ export default function App() {
     }
   };
 
-  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE MAGNÉTIQUE
-  const renderAppleStocksInteractiveChart = (chartData: any, isUp: boolean) => {
+  // RENDU EXACT DU VRAI GRAPHIQUE YAHOO FINANCE AVEC CURSEUR TACTILE SANS CLIPPING
+  const renderAppleStocksRealChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
     const min = chartData.low;
@@ -293,6 +315,7 @@ export default function App() {
     const w = 280;
     const h = 180;
 
+    // Coordonnées de la courbe réelle (aucun plateau plat artificiel)
     const coords = points.map((pt: any, idx: number) => {
       const x = (idx / (points.length - 1)) * w;
       const y = h - ((pt.price - min) / range) * (h - 35) - 15;
@@ -303,7 +326,7 @@ export default function App() {
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: string[] = chartData.scaleSteps || [max.toString(), min.toString()];
 
-    // Gestion du glissement au doigt
+    // Gestion du curseur tactile magnétique au doigt
     const handleTouchOrMove = (clientX: number, target: HTMLElement) => {
       const rect = target.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
@@ -329,40 +352,37 @@ export default function App() {
             onPointerUp={() => setScrubPoint(null)}
             onTouchEnd={() => setScrubPoint(null)}>
             
-            {/* QUADRILLAGE HORIZONTAL */}
+            {/* LIGNES DE QUADRILLAGE RÉELLES */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
-            {/* QUADRILLAGE VERTICAL */}
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
 
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
-                <linearGradient id="appleGradientInteractive" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="appleGradientTrueLive" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={strokeColor} stopOpacity="0.32" />
                   <stop offset="85%" stopColor={strokeColor} stopOpacity="0.04" />
                   <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <polygon points={polygon} fill="url(#appleGradientInteractive)" />
+              <polygon points={polygon} fill="url(#appleGradientTrueLive)" />
               <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
 
-              {/* CURSEUR TACTILE AVEC POINT MAGNÉTIQUE QUI SUIT LA COURBE */}
+              {/* CURSEUR ET POINT MAGNÉTIQUE QUI GLISSE SUR LA COURBE */}
               {scrubPoint && (
                 <g>
-                  {/* Ligne de visée verticale */}
                   <line x1={scrubPoint.x} y1={0} x2={scrubPoint.x} y2={h} stroke="#8e8e93" strokeWidth="1" strokeDasharray="3 3" />
-                  {/* Point magnétique sur la courbe */}
                   <circle cx={scrubPoint.x} cy={scrubPoint.y} r="5" fill="#ffffff" stroke={strokeColor} strokeWidth="3" />
                 </g>
               )}
             </svg>
 
-            {/* BULLE D'HEURE FLOTTANTE AU DOIGT */}
+            {/* BULLE D'HEURE OU DE DATE FLOTTANTE AU TOUCHER */}
             {scrubPoint && (
               <div style={{
                 position: 'absolute', top: '4px', left: `${Math.max(10, Math.min(w - 70, scrubPoint.x - 30))}px`,
@@ -383,7 +403,7 @@ export default function App() {
 
         </div>
 
-        {/* AXE X TEMPOREL */}
+        {/* AXE X TEMPOREL (VRAIS MOIS OU HEURES 24H) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -474,6 +494,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* 2 COMPTEURS DISTINCTS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
             onClick={handleManualRefresh}
@@ -505,7 +526,7 @@ export default function App() {
           <button
             onClick={() => { setActiveTab('MARKETS'); setMenuOpen(false); }}
             style={{ padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: activeTab === 'MARKETS' ? '#0071e3' : '#2c2c2e', color: '#fff', fontWeight: 700, textAlign: 'left', cursor: 'pointer' }}>
-            1. Marchés & Détecteur de Pépites
+            1. Analyse du Marché
           </button>
           <button
             onClick={() => { setActiveTab('AUTO_SIM'); setMenuOpen(false); }}
@@ -531,7 +552,7 @@ export default function App() {
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : MARCHÉS (FILTRES LEBONCOIN & ACCORDÉON) */}
+        {/* ONGLET 1 : ANALYSE DU MARCHÉ (ACCORDÉON COMPACT) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
@@ -552,7 +573,7 @@ export default function App() {
               </div>
 
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
-                Données synchronisées en direct.
+                Données Yahoo Finance en temps réel.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -571,7 +592,7 @@ export default function App() {
                 ))}
               </div>
 
-              {/* FILTRES STYLE LEBONCOIN (TRI RAPIDE PAR HAUSSE / BAISSE) */}
+              {/* FILTRES STYLE LEBONCOIN */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.6rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
                 <span style={{ fontSize: '0.7rem', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                   <Filter size={12} /> Trier :
@@ -590,26 +611,14 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => setSortFilter('GAIN_1Y')}
-                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #34c759', backgroundColor: sortFilter === 'GAIN_1Y' ? 'rgba(52, 199, 89, 0.25)' : 'transparent', color: '#34c759', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  📈 Hausse 1 An
-                </button>
-
-                <button
                   onClick={() => setSortFilter('DROP_24H')}
                   style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_24H' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📉 Baisse 24h
                 </button>
-
-                <button
-                  onClick={() => setSortFilter('DROP_1Y')}
-                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_1Y' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  🔻 Baisse 1 An
-                </button>
               </div>
             </div>
 
-            {/* RECHERCHE */}
+            {/* BARRE DE RECHERCHE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
@@ -650,7 +659,7 @@ export default function App() {
                       }}>
                       
                       <div
-                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
+                        onClick={() => { setChartStock(m); setRealChartData(null); }}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <strong style={{ fontSize: '1.05rem', color: '#fff' }}>{m.ticker}</strong>
@@ -664,7 +673,7 @@ export default function App() {
                       </div>
 
                       <div 
-                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
+                        onClick={() => { setChartStock(m); setRealChartData(null); }}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
                         <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{m.priceFormatted} {cur}</div>
                         <div style={{ fontSize: '0.78rem', color: m.changeRaw >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
@@ -673,7 +682,7 @@ export default function App() {
                       </div>
 
                       <div 
-                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
+                        onClick={() => { setChartStock(m); setRealChartData(null); }}
                         style={{
                           padding: '0.3rem 0.55rem', borderRadius: '6px',
                           backgroundColor: badge.bg, border: `1px solid ${badge.border}`,
@@ -720,7 +729,7 @@ export default function App() {
                         </div>
 
                         <button
-                          onClick={() => { setChartStock(m); setScrubPoint(null); }}
+                          onClick={() => { setChartStock(m); setRealChartData(null); }}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
                             padding: '0.55rem', backgroundColor: '#0071e3', color: '#fff',
@@ -806,7 +815,7 @@ export default function App() {
                 simPositions.map((p) => {
                   const isProfit = Number(p.pnl) >= 0;
                   return (
-                    <div key={p.id} onClick={() => { setChartStock(p); setScrubPoint(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
+                    <div key={p.id} onClick={() => { setChartStock(p); setRealChartData(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <strong style={{ fontSize: '1rem' }}>{p.company_name}</strong>
@@ -841,7 +850,7 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (RECHERCHE FINE & ACCORDÉON) */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL */}
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
           <div>
@@ -876,7 +885,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRE DE RECHERCHE COMPACTE SANS ENCOMBREMENT */}
+            {/* RECHERCHE COMPACTE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
@@ -905,7 +914,6 @@ export default function App() {
               )}
             </div>
 
-            {/* FORMULAIRE DÉROULANT UNIQUEMENT LORS D'UN CHOIX */}
             {selectedStock && (
               <form onSubmit={handleAddManual} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2997ff', padding: '0.85rem', borderRadius: '10px', marginBottom: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -953,7 +961,7 @@ export default function App() {
               </form>
             )}
 
-            {/* LISTE EN ACCORDÉON COMPACT POUR MON PORTEFEUILLE */}
+            {/* LISTE ACCORDÉON MON PORTEFEUILLE */}
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.6rem' }}>
               Vos Lignes en Portefeuille ({manualPositions.length})
             </h3>
@@ -971,7 +979,6 @@ export default function App() {
                       overflow: 'hidden', boxSizing: 'border-box'
                     }}>
                     
-                    {/* LIGNE ULTRA COMPACTE PAR DÉFAUT */}
                     <div
                       style={{
                         padding: '0.75rem 0.9rem',
@@ -982,7 +989,7 @@ export default function App() {
                       }}>
                       
                       <div
-                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                        onClick={() => { setChartStock(p); setRealChartData(null); }}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <strong style={{ fontSize: '1.05rem', color: '#fff' }}>{p.company_name}</strong>
@@ -992,7 +999,7 @@ export default function App() {
                       </div>
 
                       <div 
-                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                        onClick={() => { setChartStock(p); setRealChartData(null); }}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
                         <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{p.current_value} €</div>
                         <div style={{
@@ -1020,7 +1027,6 @@ export default function App() {
 
                     </div>
 
-                    {/* VOLET DÉROULANT POUR VOIR LE RESTE */}
                     {isExpanded && (
                       <div style={{
                         padding: '0.75rem 0.9rem',
@@ -1047,7 +1053,7 @@ export default function App() {
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
                           <button
-                            onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                            onClick={() => { setChartStock(p); setRealChartData(null); }}
                             style={{ background: 'none', border: 'none', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                             <LineChart size={14} /> Voir le graphique Bourse
                           </button>
@@ -1072,7 +1078,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE MAGNÉTIQUE */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC VRAIES DONNÉES YAHOO */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -1085,7 +1091,6 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE DYNAMIQUE AVEC PRIX DU CURSEUR AU TOUCHER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -1099,15 +1104,12 @@ export default function App() {
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
-                {/* PRIX EN DIRECT OU PRIX DU POINT MAGNÉTIQUE AU DOIGT */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
                   <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
-                    {scrubPoint 
-                      ? scrubPoint.price.toFixed(2).replace('.', ',') 
-                      : (chartStock.priceFormatted || chartStock.price || chartStock.current_price)} {chartStock.currency || '€'}
+                    {scrubPoint ? scrubPoint.price.toFixed(2).replace('.', ',') : (realChartData?.close?.toFixed(2).replace('.', ',') || chartStock.priceFormatted || chartStock.price)} {chartStock.currency || '€'}
                   </span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
-                    {scrubPoint ? scrubPoint.timeStr : (chartStock.history?.[chartPeriod]?.periodChange || chartStock.change)}
+                    {scrubPoint ? scrubPoint.timeStr : (realChartData?.periodChange || chartStock.change)}
                   </span>
                 </div>
 
@@ -1118,19 +1120,19 @@ export default function App() {
 
               <button
                 onClick={handleManualRefresh}
-                disabled={refreshingLive}
+                disabled={refreshingLive || chartLoading}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.45rem 0.75rem', backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '2.5rem' }}>
-                <RefreshCw size={13} className={refreshingLive ? 'animate-spin' : ''} />
+                <RefreshCw size={13} className={refreshingLive || chartLoading ? 'animate-spin' : ''} />
                 <span>Actualiser</span>
               </button>
             </div>
 
-            {/* SÉLECTEUR 1H, 1J, 1S, 1M, 3M, 1A */}
+            {/* SÉLECTEUR DE PÉRIODES */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1H', '1D', '1W', '1M', '3M', '1Y'] as const).map(p => (
                 <button
                   key={p}
-                  onClick={() => { setChartPeriod(p); setScrubPoint(null); }}
+                  onClick={() => setChartPeriod(p)}
                   style={{
                     padding: '0.45rem 0', borderRadius: '8px', border: 'none',
                     backgroundColor: chartPeriod === p ? '#3a3a3c' : 'transparent',
@@ -1142,11 +1144,15 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE GRAPHIQUE PRÉCIS AVEC CURSEUR MAGNÉTIQUE */}
-            {chartStock.history ? (
-              renderAppleStocksInteractiveChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
+            {/* LE VRAI GRAPHIQUE YAHOO FINANCE SANS CLIPPING */}
+            {chartLoading ? (
+              <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', fontSize: '0.85rem', backgroundColor: '#000', borderRadius: '12px' }}>
+                <RefreshCw size={18} className="animate-spin" style={{ marginRight: '0.5rem' }} /> Chargement du cours Yahoo Finance...
+              </div>
+            ) : realChartData ? (
+              renderAppleStocksRealChart(realChartData, (chartStock.changeRaw ?? 1) >= 0)
             ) : (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du graphique...</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du tracé...</div>
             )}
 
             {/* STATISTIQUES FINANCIÈRES SYNCHRONISÉES */}
