@@ -6,7 +6,7 @@ import {
   Menu, X, Bot, TrendingUp, RefreshCw, Zap, Layers, 
   RotateCcw, Globe, LogOut, CheckCircle, ShieldAlert, 
   Sparkles, Plus, Trash2, ArrowUpRight, ArrowDownRight, Clock,
-  Search, Flame, LineChart, ChevronRight
+  Search, Flame, LineChart, ChevronRight, History, Wallet, Landmark
 } from 'lucide-react';
 
 function getBrowserSupabase() {
@@ -38,18 +38,19 @@ export default function App() {
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
 
-  // Portefeuille formulaire
+  // Mon Portefeuille
   const [portfolioSearchQuery, setPortfolioSearchQuery] = useState('');
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [newShares, setNewShares] = useState('5');
   const [newPrice, setNewPrice] = useState('');
   const [newThreshold, setNewThreshold] = useState('3.0');
 
-  // Modal Graphique
+  // Modals
   const [chartStock, setChartStock] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'1D' | '1W' | '1M' | '1Y'>('1M');
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Timer 5 minutes
+  // Timer
   const [countdown, setCountdown] = useState(300);
 
   // Auth
@@ -57,7 +58,6 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Initialisation Session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -72,7 +72,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Décompte 5 minutes
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -155,7 +154,7 @@ export default function App() {
         })
       });
       const data = await res.json();
-      setStatusMsg(data.message || 'Position enregistrée !');
+      setStatusMsg(data.message || 'Position enregistrée.');
       setSelectedStock(null);
       setNewPrice('');
       fetchData();
@@ -177,7 +176,7 @@ export default function App() {
   const handleRunSimulation = async () => {
     if (!user) return;
     setLoading(true);
-    setStatusMsg('Gemini et Groq scannent les plus fortes hausses et investissent...');
+    setStatusMsg('Analyse algorithmique en cours...');
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -185,7 +184,7 @@ export default function App() {
         body: JSON.stringify({ action: 'AUTO_SIMULATION_STEP', userId: user.id })
       });
       const data = await res.json();
-      setStatusMsg(data.message || 'Simulation actualisée.');
+      setStatusMsg(data.message || 'Ordres exécutés.');
       await fetchData();
     } finally {
       setLoading(false);
@@ -202,53 +201,109 @@ export default function App() {
     fetchData();
   };
 
-  // RECHERCHE INTELLIGENTE TOLÉRANTE (SANS ACCENTS, MULTI-MOTS, CAS D'ERREURS)
+  // Recherche tolérante
   const smartMatch = (item: any, rawQuery: string) => {
     if (!rawQuery.trim()) return true;
     const clean = (s: string) => (s || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
     const q = clean(rawQuery);
     const corpus = clean(`${item.ticker} ${item.name} ${item.category} ${item.keywords || ''}`);
-    
     if (corpus.includes(q)) return true;
-    const words = q.split(/\s+/);
-    return words.some(w => w.length > 2 && corpus.includes(w));
+    return q.split(/\s+/).some(w => w.length > 2 && corpus.includes(w));
   };
 
   const filteredMarkets = markets.filter(m => {
     const matchFilter = marketFilter === 'ALL' || m.market === marketFilter;
-    const matchSearch = smartMatch(m, marketSearchQuery);
-    return matchFilter && matchSearch;
+    return matchFilter && smartMatch(m, marketSearchQuery);
   });
 
   const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
 
-  // Rendu de la courbe graphique SVG
-  const renderSvgChart = (points: number[], isUp: boolean) => {
-    if (!points || points.length === 0) return null;
-    const min = Math.min(...points);
-    const max = Math.max(...points);
+  // Rendu de badge selon le code couleur strict
+  const getBadgeStyle = (colorType: string) => {
+    switch (colorType) {
+      case 'GREEN_DARK':
+        return { bg: 'rgba(5, 150, 105, 0.3)', border: '#059669', text: '#10b981', label: 'ACHAT FORT' };
+      case 'GREEN_LIGHT':
+        return { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#34d399', label: 'ACHAT' };
+      case 'YELLOW':
+        return { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', text: '#fbbf24', label: 'ATTENTION / CONSERVER' };
+      case 'RED':
+      default:
+        return { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#f87171', label: 'DÉCONSEILLÉ' };
+    }
+  };
+
+  // Rendu Graphique Apple Stocks
+  const renderAppleStocksChart = (chartData: any, isUp: boolean) => {
+    if (!chartData || !chartData.points || chartData.points.length === 0) return null;
+    const points = chartData.points;
+    const min = chartData.low;
+    const max = chartData.high;
     const range = max - min || 1;
-    const w = 320;
-    const h = 120;
-    const coords = points.map((p, idx) => {
-      const x = (idx / (points.length - 1)) * w;
-      const y = h - ((p - min) / range) * (h - 20) - 10;
+    const w = 340;
+    const h = 140;
+
+    const coords = points.map((pt: any, idx: number) => {
+      const x = (idx / (points.length - 1)) * (w - 20) + 10;
+      const y = h - ((pt.price - min) / range) * (h - 35) - 20;
       return `${x},${y}`;
     }).join(' ');
 
     const strokeColor = isUp ? '#10b981' : '#ef4444';
-    const fillColor = isUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
-    const polygonPoints = `0,${h} ${coords} ${w},${h}`;
+    const fillColor = isUp ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+    const polygon = `10,${h - 10} ${coords} ${w - 10},${h - 10}`;
 
     return (
-      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: '140px', overflow: 'visible' }}>
-        <polygon points={polygonPoints} fill={fillColor} />
-        <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <div>
+        <div style={{ position: 'relative', width: '100%', height: '160px', backgroundColor: '#090d16', borderRadius: '10px', padding: '0.5rem 0', boxSizing: 'border-box' }}>
+          {/* Ligne pointillée Max */}
+          <div style={{ position: 'absolute', top: '15px', left: '10px', right: '10px', borderTop: '1px dashed #334155', display: 'flex', justifyContent: 'flex-end' }}>
+            <span style={{ fontSize: '0.65rem', color: '#94a3b8', backgroundColor: '#090d16', paddingLeft: '4px' }}>Haut : {max} €</span>
+          </div>
+
+          {/* Ligne pointillée Min */}
+          <div style={{ position: 'absolute', bottom: '25px', left: '10px', right: '10px', borderTop: '1px dashed #334155', display: 'flex', justifyContent: 'flex-end' }}>
+            <span style={{ fontSize: '0.65rem', color: '#94a3b8', backgroundColor: '#090d16', paddingLeft: '4px' }}>Bas : {min} €</span>
+          </div>
+
+          <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+            <polygon points={polygon} fill={fillColor} />
+            <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+
+          {/* Repères horizontaux temporels */}
+          <div style={{ position: 'absolute', bottom: '4px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#64748b' }}>
+            {points.map((pt: any, i: number) => (
+              <span key={i}>{pt.label}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Grille de stats financières façon Apple Stocks */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginTop: '0.75rem', backgroundColor: '#090d16', padding: '0.75rem', borderRadius: '8px', fontSize: '0.75rem' }}>
+          <div>
+            <span style={{ color: '#64748b', display: 'block' }}>Ouverture</span>
+            <strong>{chartData.open} €</strong>
+          </div>
+          <div>
+            <span style={{ color: '#64748b', display: 'block' }}>Plus haut</span>
+            <strong style={{ color: '#10b981' }}>{chartData.high} €</strong>
+          </div>
+          <div>
+            <span style={{ color: '#64748b', display: 'block' }}>Plus bas</span>
+            <strong style={{ color: '#ef4444' }}>{chartData.low} €</strong>
+          </div>
+        </div>
+      </div>
     );
   };
 
-  // ÉCRAN AUTH
+  // Calculs Compte Bancaire (Mon Portefeuille)
+  const totalManualValue = manualPositions.reduce((acc, p) => acc + (Number(p.current_value) || 0), 0);
+  const totalManualCost = manualPositions.reduce((acc, p) => acc + (Number(p.cost_basis) || 0), 0);
+  const manualPnL = totalManualValue - totalManualCost;
+  const manualPnLPercent = totalManualCost > 0 ? (manualPnL / totalManualCost) * 100 : 0;
+
   if (!user) {
     return (
       <div style={{ backgroundColor: '#090d16', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', boxSizing: 'border-box' }}>
@@ -311,8 +366,8 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#090d16', color: '#f8fafc', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
-      {/* HEADER MOBILE RESPONSIVE */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', backgroundColor: '#111827', borderBottom: '1px solid #1f2937', position: 'sticky', top: 0, zIndex: 30, boxSizing: 'border-box' }}>
+      {/* HEADER RESPONSIVE AVEC TIMER DISCRET */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', backgroundColor: '#111827', borderBottom: '1px solid #1f2937', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -321,21 +376,22 @@ export default function App() {
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <Bot size={20} color="#38bdf8" />
-            <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.3px' }}>AI Trading</span>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>AI Trading</span>
           </div>
         </div>
 
-        {/* TIMER DISCRET DANS L'EN-TÊTE */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#172033', border: '1px solid #334155', padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem', color: '#94a3b8' }}>
+        {/* TIMER DISCRET */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#172033', border: '1px solid #334155', padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem' }}>
             <Clock size={12} color="#38bdf8" />
-            <span style={{ color: '#f8fafc', fontWeight: 700 }}>{formatTimer(countdown)}</span>
+            <span style={{ color: '#94a3b8' }}>Scan :</span>
+            <strong style={{ color: '#f8fafc' }}>{formatTimer(countdown)}</strong>
           </div>
 
           <button
             onClick={() => supabase.auth.signOut()}
-            title="Se déconnecter"
-            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            title="Déconnexion"
+            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
             <LogOut size={17} />
           </button>
         </div>
@@ -362,7 +418,7 @@ export default function App() {
         </div>
       )}
 
-      {/* BANDEAU NOTIFICATION D'ACTION */}
+      {/* STATUT */}
       {statusMsg && (
         <div style={{ backgroundColor: '#131b2e', borderBottom: '1px solid #2563eb', padding: '0.65rem 1rem', fontSize: '0.8rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Sparkles size={14} />
@@ -370,26 +426,24 @@ export default function App() {
         </div>
       )}
 
-      {/* CORPS DE PAGE */}
+      {/* CONTENU */}
       <main style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : ANALYSE & PÉPITES */}
+        {/* ONGLET 1 : ANALYSE & DÉTECTEUR DE PÉPITES */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
-          <div style={{ width: '100%', boxSizing: 'border-box' }}>
-            
-            {/* TITRE + SÉLECTEURS */}
-            <div style={{ marginBottom: '1.25rem' }}>
+          <div>
+            <div style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
                 <Flame size={20} color="#f59e0b" />
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Détecteur de Pépites</h2>
               </div>
-              <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>
-                Classement en direct des plus fortes hausses et recommandations IA.
+              <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
+                Marchés en direct, catalyseurs et recommandations de l'IA par code couleur.
               </p>
 
-              {/* FILTRE MARCHÉ BUTTONS */}
+              {/* FILTRES PAR MARCHÉ */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', width: '100%', boxSizing: 'border-box' }}>
                 {(['ALL', 'US', 'PARIS'] as const).map(f => (
                   <button
@@ -406,41 +460,33 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRE DE RECHERCHE INTELLIGENTE */}
-            <div style={{ position: 'relative', width: '100%', marginBottom: '1.25rem', boxSizing: 'border-box' }}>
+            {/* BARRE DE RECHERCHE */}
+            <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
               <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 value={marketSearchQuery}
                 onChange={e => setMarketSearchQuery(e.target.value)}
-                placeholder="Rechercher (ex: Dassault, Nvidia, ASTS, Rafale, Vusion...)"
-                style={{
-                  width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem',
-                  backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px',
-                  color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none'
-                }}
+                placeholder="Rechercher (Dassault, Nvidia, ASTS, Rafale, Vusion...)"
+                style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
             {/* LISTE DES ACTIONS */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', width: '100%', boxSizing: 'border-box' }}>
-              {filteredMarkets.length === 0 ? (
-                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', backgroundColor: '#111827', borderRadius: '12px' }}>
-                  Aucune action ne correspond à votre recherche.
-                </div>
-              ) : (
-                filteredMarkets.map((m) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {filteredMarkets.map((m) => {
+                const badge = getBadgeStyle(m.aiColor);
+                return (
                   <div
                     key={m.ticker}
                     onClick={() => setChartStock(m)}
                     style={{
                       backgroundColor: '#111827',
-                      border: m.isSurge ? '1px solid #f59e0b' : '1px solid #1f2937',
+                      border: `1px solid ${badge.border}`,
                       borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column',
                       gap: '0.65rem', boxSizing: 'border-box', cursor: 'pointer'
                     }}>
                     
-                    {/* HAUT DE CARTE */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -463,52 +509,45 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* BADGE CONSEIL IA */}
+                    {/* BADGE CODE COULEUR STRICT */}
                     <div style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.4rem 0.65rem', borderRadius: '6px',
-                      backgroundColor: m.isSurge ? 'rgba(245, 158, 11, 0.12)' : m.aiSignal.includes('FORT') ? 'rgba(16, 185, 129, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                      border: `1px solid ${m.isSurge ? '#f59e0b' : m.aiSignal.includes('FORT') ? '#10b981' : '#38bdf8'}`
+                      padding: '0.45rem 0.75rem', borderRadius: '6px',
+                      backgroundColor: badge.bg, border: `1px solid ${badge.border}`
                     }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.75rem', color: m.isSurge ? '#f59e0b' : m.aiSignal.includes('FORT') ? '#10b981' : '#38bdf8' }}>
-                        {m.aiSignal}
+                      <span style={{ fontWeight: 800, fontSize: '0.75rem', color: badge.text }}>
+                        {badge.label}
                       </span>
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
                         Confiance : <strong style={{ color: '#fff' }}>{m.aiConfidence}%</strong>
                       </span>
                     </div>
 
-                    {/* PHRASE AVIS IA */}
                     <div style={{ backgroundColor: '#1e293b', padding: '0.65rem', borderRadius: '8px', fontSize: '0.8rem', color: '#e2e8f0', lineHeight: '1.35' }}>
-                      <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
-                        💡 Avis & Analyse de l'IA
-                      </span>
                       {m.aiAdvice}
                     </div>
 
-                    {/* LIEN GRAPHIQUE */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#38bdf8', paddingTop: '0.2rem' }}>
-                      <span>📈 Voir le graphique & l'historique</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#38bdf8' }}>
+                      <span>📈 Toucher pour ouvrir le graphique Bourse</span>
                       <ChevronRight size={14} />
                     </div>
 
                   </div>
-                ))
-              )}
+                );
+              })}
             </div>
-
           </div>
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 2 : SIMULATION 500 € */}
+        {/* ONGLET 2 : SIMULATION 500 € + HISTORIQUE */}
         {/* ======================================================== */}
         {activeTab === 'AUTO_SIM' && (
-          <div style={{ width: '100%', boxSizing: 'border-box' }}>
-            <div style={{ marginBottom: '1.25rem' }}>
+          <div>
+            <div style={{ marginBottom: '1.2rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Simulation Autonome (500 €)</h2>
               <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0.2rem 0 1rem 0' }}>
-                L'IA arbitre le capital virtuel sur les pépites pour maximiser le rendement.
+                L'IA gère et arbitre ce capital fictif en direct sur les pépites.
               </p>
 
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -521,8 +560,16 @@ export default function App() {
                     border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer'
                   }}>
                   <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-                  {loading ? 'Recherche en cours...' : 'Déclencher Cycle IA'}
+                  {loading ? 'L’IA analyse...' : 'Déclencher Cycle IA'}
                 </button>
+
+                {/* BOUTON HISTORIQUE DES ORDRES */}
+                <button
+                  onClick={() => setHistoryOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.7rem 0.9rem', backgroundColor: '#1e293b', color: '#38bdf8', border: '1px solid #334155', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                  <History size={15} /> Ordres
+                </button>
+
                 <button
                   onClick={handleResetSimulation}
                   title="Réinitialiser"
@@ -532,10 +579,10 @@ export default function App() {
               </div>
             </div>
 
-            {/* BANDEAU CAPITAL */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '1.5rem', width: '100%', boxSizing: 'border-box' }}>
+            {/* BANDEAU FINANCIER */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '1.5rem' }}>
               <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem', borderRadius: '10px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>CASH DISPONIBLE</span>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>CASH RESTANT</span>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem' }}>
                   {Number(simPortfolio.cash_balance).toFixed(2)} €
                 </div>
@@ -548,15 +595,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* CARTES DES ACTIONS DÉTENUES PAR L'IA */}
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.6rem' }}>
-              Positions Détenues par l'IA ({simPositions.length})
+              Positions Actuelles de l'IA ({simPositions.length})
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {simPositions.length === 0 ? (
                 <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', backgroundColor: '#111827', borderRadius: '12px' }}>
-                  L'IA n'a pas encore pris de positions. Cliquez sur <strong>« Déclencher Cycle IA »</strong>.
+                  L'IA n'a pas encore ouvert de position. Cliquez sur <strong>« Déclencher Cycle IA »</strong>.
                 </div>
               ) : (
                 simPositions.map((p) => {
@@ -571,7 +617,6 @@ export default function App() {
                         <div style={{ fontWeight: 800, fontSize: '1rem' }}>{p.current_value} €</div>
                       </div>
 
-                      {/* DEUX LIGNES BIEN SÉPARÉES POUR ACHAT ET ACTUEL */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: '#090d16', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem' }}>
                         <div>
                           <span style={{ color: '#94a3b8' }}>Prix d'achat unitaire :</span>
@@ -594,25 +639,50 @@ export default function App() {
                 })
               )}
             </div>
-
           </div>
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (VISUEL PRO MOBILE) */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (EN-TÊTE COMPTE BANCAIRE) */}
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
-          <div style={{ width: '100%', boxSizing: 'border-box' }}>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Mon Vrai Portefeuille</h2>
-              <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0.2rem 0 1rem 0' }}>
-                Surveillance 24h/24 : ajoutez vos actions réelles pour recevoir les alertes.
-              </p>
+          <div>
+            
+            {/* EN-TÊTE STYLE COMPTE BANCAIRE PRO */}
+            <div style={{
+              backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '16px',
+              padding: '1.25rem', marginBottom: '1.5rem', background: 'linear-gradient(180deg, #161f33 0%, #111827 100%)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                <Landmark size={14} color="#38bdf8" />
+                <span>Valeur Totale de mes Actions</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '1.9rem', fontWeight: 900, color: '#f8fafc', letterSpacing: '-0.5px' }}>
+                  {totalManualValue.toFixed(2)} €
+                </div>
+
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                  padding: '0.25rem 0.6rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800,
+                  backgroundColor: manualPnL >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: manualPnL >= 0 ? '#10b981' : '#ef4444'
+                }}>
+                  {manualPnL >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                  {manualPnL >= 0 ? '+' : ''}{manualPnL.toFixed(2)} € ({manualPnLPercent.toFixed(1)}%)
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #1f2937', fontSize: '0.75rem', color: '#94a3b8' }}>
+                <div>Total investi : <strong style={{ color: '#f8fafc' }}>{totalManualCost.toFixed(2)} €</strong></div>
+                <div>Positions : <strong style={{ color: '#38bdf8' }}>{manualPositions.length} lignes</strong></div>
+              </div>
             </div>
 
-            {/* FORMULAIRE RECHERCHE FLUIDE */}
-            <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem', boxSizing: 'border-box' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Ajouter une action</span>
+            {/* FORMULAIRE RECHERCHE */}
+            <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Ajouter une action à surveiller</span>
 
               <div style={{ position: 'relative', width: '100%', marginBottom: '0.75rem' }}>
                 <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
@@ -624,7 +694,6 @@ export default function App() {
                   style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
                 />
 
-                {/* SUGGESTIONS INTELLIGENTES */}
                 {portfolioSuggestions.length > 0 && (
                   <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#172033', border: '1px solid #334155', borderRadius: '8px', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
                     {portfolioSuggestions.map(s => (
@@ -643,7 +712,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* ÉTAPE SUIVANTE APRES SÉLECTION */}
               {selectedStock && (
                 <form onSubmit={handleAddManual} style={{ backgroundColor: '#172033', padding: '0.85rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -692,86 +760,77 @@ export default function App() {
               )}
             </div>
 
-            {/* LISTE PRO FORMAT CARTE MOBILE (DIVERSIFIÉ EN PLUSIEURS LIGNES) */}
+            {/* LISTE PRO FORMAT CARTE AVEC ACHAT VS ACTUEL SÉPARÉS */}
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.6rem' }}>
-              Vos Actions Surveillées ({manualPositions.length})
+              Vos Lignes en Portefeuille ({manualPositions.length})
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', boxSizing: 'border-box' }}>
-              {manualPositions.length === 0 ? (
-                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', backgroundColor: '#111827', borderRadius: '12px' }}>
-                  Aucune action suivie pour l'instant. Utilisez la recherche ci-dessus pour ajouter votre premier actif.
-                </div>
-              ) : (
-                manualPositions.map((p) => {
-                  const isProfit = Number(p.pnl) >= 0;
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px',
-                        padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', boxSizing: 'border-box'
-                      }}>
-                      
-                      {/* LIGNE 1 : NOM + VALEUR TOTALE */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <strong style={{ fontSize: '1.05rem' }}>{p.company_name}</strong>
-                            <span style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>{p.ticker}</span>
-                          </div>
-                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Quantité : {p.shares} actions</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {manualPositions.map((p) => {
+                const isProfit = Number(p.pnl) >= 0;
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px',
+                      padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem'
+                    }}>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <strong style={{ fontSize: '1.05rem' }}>{p.company_name}</strong>
+                          <span style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>{p.ticker}</span>
                         </div>
-
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
-                          <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                            padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
-                            backgroundColor: isProfit ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                            color: isProfit ? '#10b981' : '#ef4444', marginTop: '0.15rem'
-                          }}>
-                            {isProfit ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                            {isProfit ? '+' : ''}{p.pnl} € ({p.pnl_percent}%)
-                          </div>
-                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Quantité : {p.shares} actions</span>
                       </div>
 
-                      {/* LIGNE 2 : DEUX BLOCS SEPARES POUR PRIX D'ACHAT VS COURS EN DIRECT */}
-                      <div style={{
-                        display: 'grid', gridTemplateColumns: '1fr 1fr',
-                        backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '8px',
-                        padding: '0.6rem 0.8rem', fontSize: '0.75rem'
-                      }}>
-                        <div>
-                          <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.15rem' }}>Prix d'achat unitaire</span>
-                          <strong style={{ fontSize: '0.9rem', color: '#f8fafc' }}>{p.average_buy_price} €</strong>
-                        </div>
-                        <div style={{ textAlign: 'right', borderLeft: '1px solid #1f2937', paddingLeft: '0.8rem' }}>
-                          <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.15rem' }}>Cours actuel en direct</span>
-                          <strong style={{ fontSize: '0.9rem', color: '#38bdf8' }}>{p.current_price} €</strong>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
+                        <div style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                          padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
+                          backgroundColor: isProfit ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: isProfit ? '#10b981' : '#ef4444', marginTop: '0.15rem'
+                        }}>
+                          {isProfit ? '+' : ''}{p.pnl} € ({p.pnl_percent}%)
                         </div>
                       </div>
-
-                      {/* LIGNE 3 : AVIS IA + SUPPRESSION */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
-                        <button
-                          onClick={() => setChartStock(p)}
-                          style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          <LineChart size={14} /> Voir le graphique
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteManual(p.id)}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          <Trash2 size={14} /> Retirer
-                        </button>
-                      </div>
-
                     </div>
-                  );
-                })
-              )}
+
+                    {/* DEUX LIGNES NETTEMENT SÉPARÉES */}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '1fr 1fr',
+                      backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '8px',
+                      padding: '0.6rem 0.8rem', fontSize: '0.75rem'
+                    }}>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.15rem' }}>Prix d'achat unitaire</span>
+                        <strong style={{ fontSize: '0.9rem', color: '#f8fafc' }}>{p.average_buy_price} €</strong>
+                      </div>
+                      <div style={{ textAlign: 'right', borderLeft: '1px solid #1f2937', paddingLeft: '0.8rem' }}>
+                        <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.15rem' }}>Cours actuel en direct</span>
+                        <strong style={{ fontSize: '0.9rem', color: '#38bdf8' }}>{p.current_price} €</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
+                      <button
+                        onClick={() => setChartStock(p)}
+                        style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <LineChart size={14} /> Voir le graphique Bourse
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteManual(p.id)}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Trash2 size={14} /> Retirer
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })}
             </div>
 
           </div>
@@ -780,29 +839,27 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE INTERACTIF (1J, 1S, 1M, 1A) */}
+      {/* MODAL GRAPHIQUE APPLE STOCKS */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50,
-          boxSizing: 'border-box'
+          backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50
         }}>
           <div style={{
             backgroundColor: '#111827', borderTop: '1px solid #334155', borderTopLeftRadius: '20px', borderTopRightRadius: '20px',
             width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '1.25rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE MODAL */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>{chartStock.name}</h3>
                   <span style={{ color: '#38bdf8', fontWeight: 800 }}>({chartStock.ticker})</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                  <span style={{ fontSize: '1.3rem', fontWeight: 800 }}>{chartStock.price || chartStock.current_price} €</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900 }}>{chartStock.price || chartStock.current_price} €</span>
                   <span style={{ fontSize: '0.9rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#10b981' : '#ef4444', fontWeight: 800 }}>
                     {chartStock.change || `${chartStock.pnl_percent}%`}
                   </span>
@@ -816,7 +873,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* SÉLECTEUR DE PÉRIODE */}
+            {/* SÉLECTEUR 1J / 1S / 1M / 1A */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem', backgroundColor: '#090d16', padding: '0.3rem', borderRadius: '8px', marginBottom: '1rem' }}>
               {(['1D', '1W', '1M', '1Y'] as const).map(p => (
                 <button
@@ -828,36 +885,80 @@ export default function App() {
                     color: chartPeriod === p ? '#fff' : '#94a3b8',
                     fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer'
                   }}>
-                  {p === '1D' ? '1 Jour' : p === '1W' ? '1 Semaine' : p === '1M' ? '1 Mois' : '1 An'}
+                  {p === '1D' ? '1J' : p === '1W' ? '1S' : p === '1M' ? '1M' : '1A'}
                 </button>
               ))}
             </div>
 
-            {/* LE GRAPHIQUE SVG DYNAMIQUE */}
-            <div style={{ backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '12px', padding: '1rem 0.5rem', marginBottom: '1rem' }}>
-              {chartStock.history ? (
-                renderSvgChart(chartStock.history[chartPeriod] || [], (chartStock.changeRaw ?? 1) >= 0)
-              ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Historique en cours de chargement...</div>
-              )}
-            </div>
+            {/* LE GRAPHIQUE PRÉCIS STYLE APPLE STOCKS */}
+            {chartStock.history ? (
+              renderAppleStocksChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Historique indisponible</div>
+            )}
 
-            {/* AVIS COMPLET DE L'IA */}
-            <div style={{ backgroundColor: '#1e293b', padding: '0.85rem', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+            {/* AVIS IA */}
+            <div style={{ backgroundColor: '#1e293b', padding: '0.85rem', borderRadius: '10px', fontSize: '0.85rem', margin: '0.85rem 0' }}>
               <span style={{ color: '#38bdf8', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>
                 🎯 Synthèse & Diagnostic de l'IA
               </span>
               <p style={{ margin: 0, color: '#e2e8f0', lineHeight: '1.4' }}>
-                {chartStock.aiAdvice || "Surveillance algorithmique continue par Gemini & Groq."}
+                {chartStock.aiAdvice || "Surveillance algorithmique continue assurée par Gemini & Groq."}
               </p>
             </div>
 
             <button
               onClick={() => setChartStock(null)}
               style={{ width: '100%', padding: '0.75rem', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>
-              Fermer la vue graphique
+              Fermer la vue Bourse
             </button>
 
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL HISTORIQUE DES ORDRES IA (SIMULATION) */}
+      {/* ======================================================== */}
+      {historyOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem'
+        }}>
+          <div style={{ backgroundColor: '#111827', border: '1px solid #334155', borderRadius: '16px', maxWidth: '450px', width: '100%', padding: '1.25rem', boxSizing: 'border-box', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <History size={18} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Journal des Ordres de l'IA</h3>
+              </div>
+              <button onClick={() => setHistoryOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {simPositions.length === 0 ? (
+                <p style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'center' }}>Aucun ordre exécuté pour l'instant.</p>
+              ) : (
+                simPositions.map((p, idx) => (
+                  <div key={idx} style={{ backgroundColor: '#172033', padding: '0.75rem', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong style={{ color: '#10b981' }}>ACHAT AUTOMATIQUE</strong>
+                      <div style={{ fontWeight: 700, color: '#f8fafc', marginTop: '0.1rem' }}>{p.company_name} ({p.ticker})</div>
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Quantité : {p.shares} parts @ {p.average_buy_price} €</span>
+                    </div>
+                    <div style={{ textAlign: 'right', fontWeight: 800, color: '#38bdf8' }}>
+                      {p.current_value} €
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => setHistoryOpen(false)}
+              style={{ width: '100%', marginTop: '1rem', padding: '0.65rem', backgroundColor: '#1e293b', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>
+              Fermer l'historique
+            </button>
           </div>
         </div>
       )}
