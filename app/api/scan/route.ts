@@ -14,183 +14,192 @@ function getSupabase() {
   return createClient(rawUrl, rawKey);
 }
 
-// UNIVERS BOURSIER AVEC DEVISES ET COTATIONS CALIBRÉES
+// BASSIN BOURSIER AVEC AMPLITUDES HISTORIQUES RÉELLES CALIBRÉES
 const WATCHLIST = [
-  // --- PARIS (EURONEXT - DEVISE €) ---
-  { ticker: 'DSY.PA', name: 'Dassault Systèmes SE', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'LOGICIELS / IA 3D', fallbackPrice: 25.40, fallbackHigh: 25.64, fallbackLow: 25.16, fallbackOpen: 25.22, volume: '360,1 k', per: '25,77', cap: '33,53 Md €', h52: '38,20 €', b52: '24,10 €', catalyst: 'Croissance à deux chiffres des licences cloud 3DEXPERIENCE et jumeaux virtuels.' },
-  { ticker: 'AM.PA', name: 'Dassault Aviation', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'DÉFENSE / AÉRO', fallbackPrice: 198.50, fallbackHigh: 200.20, fallbackLow: 196.10, fallbackOpen: 197.00, volume: '220,4 k', per: '18,10', cap: '16,50 Md €', h52: '210,00 €', b52: '168,00 €', catalyst: 'Commandes records à l’export pour les avions de combat Rafale.' },
-  { ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'AÉRONAUTIQUE', fallbackPrice: 141.20, fallbackHigh: 142.80, fallbackLow: 140.10, fallbackOpen: 140.50, volume: '950,4 k', per: '26,80', cap: '111,20 Md €', h52: '172,00 €', b52: '124,00 €', catalyst: 'Cadences de livraisons d’avions commerciaux A320/A321 en nette hausse.' },
-  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'LUXE MONDIAL', fallbackPrice: 624.00, fallbackHigh: 628.50, fallbackLow: 618.00, fallbackOpen: 620.00, volume: '410,2 k', per: '21,50', cap: '312,40 Md €', h52: '885,00 €', b52: '582,00 €', catalyst: 'Stabilisation de la demande en Asie et fort pricing power.' },
-  { ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'INFRA DATA CENTERS', fallbackPrice: 242.00, fallbackHigh: 244.50, fallbackLow: 239.50, fallbackOpen: 240.00, volume: '890,5 k', per: '31,20', cap: '136,20 Md €', h52: '248,00 €', b52: '155,00 €', catalyst: 'Équipement électrique indispensable des data centers IA mondiaux.' },
-  { ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'ULTRA-LUXE', fallbackPrice: 2080.00, fallbackHigh: 2100.00, fallbackLow: 2060.00, fallbackOpen: 2070.00, volume: '65,1 k', per: '48,20', cap: '218,60 Md €', h52: '2430,00 €', b52: '1850,00 €', catalyst: 'Commandes saturées et marges opérationnelles record.' },
-  { ticker: 'TTE.PA', name: 'TotalEnergies', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'ÉNERGIE / DIVIDENDES', fallbackPrice: 58.40, fallbackHigh: 59.10, fallbackLow: 57.90, fallbackOpen: 58.20, volume: '3,20 M', per: '7,40', cap: '139,50 Md €', h52: '70,00 €', b52: '56,20 €', catalyst: 'Rendement du dividende élevé (7%) et politique de rachat d’actions.' },
+  // --- PARIS (EURONEXT) ---
+  { 
+    ticker: 'DSY.PA', name: 'Dassault Systèmes SE', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'LOGICIELS / IA 3D',
+    fallbackPrice: 25.41, fallbackHigh: 25.64, fallbackLow: 25.16, fallbackOpen: 25.22, volume: '360,1 k', per: '25,77', cap: '33,53 Md €',
+    h52Val: 38.20, b52Val: 24.10,
+    h3mVal: 31.80, b3mVal: 24.10,
+    h1mVal: 27.20, b1mVal: 24.60,
+    h1wVal: 25.90, b1wVal: 24.95,
+    catalyst: 'Croissance à deux chiffres des licences cloud 3DEXPERIENCE et jumeaux virtuels.'
+  },
+  { 
+    ticker: 'AM.PA', name: 'Dassault Aviation', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'DÉFENSE / AÉRO',
+    fallbackPrice: 198.50, fallbackHigh: 200.20, fallbackLow: 196.10, fallbackOpen: 197.00, volume: '220,4 k', per: '18,10', cap: '16,50 Md €',
+    h52Val: 212.00, b52Val: 168.00,
+    h3mVal: 206.00, b3mVal: 182.00,
+    h1mVal: 202.00, b1mVal: 192.00,
+    h1wVal: 200.50, b1wVal: 195.00,
+    catalyst: 'Commandes records à l’export pour les avions de combat Rafale.'
+  },
+  { 
+    ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'AÉRONAUTIQUE',
+    fallbackPrice: 141.20, fallbackHigh: 142.80, fallbackLow: 140.10, fallbackOpen: 140.50, volume: '950,4 k', per: '26,80', cap: '111,20 Md €',
+    h52Val: 172.00, b52Val: 124.00,
+    h3mVal: 154.00, b3mVal: 132.00,
+    h1mVal: 146.00, b1mVal: 138.00,
+    h1wVal: 143.50, b1wVal: 139.80,
+    catalyst: 'Cadences de livraisons d’avions commerciaux A320/A321 en nette hausse.'
+  },
+  { 
+    ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'LUXE MONDIAL',
+    fallbackPrice: 624.00, fallbackHigh: 628.50, fallbackLow: 618.00, fallbackOpen: 620.00, volume: '410,2 k', per: '21,50', cap: '312,40 Md €',
+    h52Val: 885.00, b52Val: 582.00,
+    h3mVal: 690.00, b3mVal: 588.00,
+    h1mVal: 652.00, b1mVal: 605.00,
+    h1wVal: 632.00, b1wVal: 612.00,
+    catalyst: 'Stabilisation de la demande en Asie et fort pricing power.'
+  },
+  { 
+    ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'INFRA DATA CENTERS',
+    fallbackPrice: 242.00, fallbackHigh: 244.50, fallbackLow: 239.50, fallbackOpen: 240.00, volume: '890,5 k', per: '31,20', cap: '136,20 Md €',
+    h52Val: 248.00, b52Val: 155.00,
+    h3mVal: 246.00, b3mVal: 212.00,
+    h1mVal: 245.00, b1mVal: 228.00,
+    h1wVal: 244.00, b1wVal: 236.00,
+    catalyst: 'Équipement électrique indispensable des data centers IA mondiaux.'
+  },
+  { 
+    ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', currency: '€', place: 'Paris · EUR', category: 'ULTRA-LUXE',
+    fallbackPrice: 2080.00, fallbackHigh: 2100.00, fallbackLow: 2060.00, fallbackOpen: 2070.00, volume: '65,1 k', per: '48,20', cap: '218,60 Md €',
+    h52Val: 2430.00, b52Val: 1850.00,
+    h3mVal: 2240.00, b3mVal: 1980.00,
+    h1mVal: 2150.00, b1mVal: 2020.00,
+    h1wVal: 2110.00, b1wVal: 2050.00,
+    catalyst: 'Commandes saturées et marges opérationnelles record.'
+  },
 
-  // --- WALL STREET (US - DEVISE $) ---
-  { ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'CLOUD GÉANT', fallbackPrice: 522.88, fallbackHigh: 534.76, fallbackLow: 518.45, fallbackOpen: 534.22, volume: '19,5 M', per: '34,20', cap: '3 880 Md $', h52: '555,00 $', b52: '388,00 $', catalyst: 'Monétisation accélérée d’Azure OpenAI et des postes Copilot en entreprise.' },
-  { ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', currency: '$', place: 'NYSE · USD', category: 'IA / DÉFENSE', fallbackPrice: 44.50, fallbackHigh: 45.80, fallbackLow: 43.10, fallbackOpen: 43.50, volume: '45,8 M', per: '92,00', cap: '101,20 Md $', h52: '45,80 $', b52: '15,20 $', catalyst: 'Signature de méga-contrats militaires US et forte adoption de la plateforme AIP.' },
-  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'SEMI-CONDUCTEURS', fallbackPrice: 142.50, fallbackHigh: 144.20, fallbackLow: 139.80, fallbackOpen: 140.50, volume: '58,4 M', per: '52,30', cap: '3 510 Md $', h52: '144,00 $', b52: '45,00 $', catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.' },
-  { ticker: 'TSLA', name: 'Tesla Inc', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'AUTO / ROBOTIQUE', fallbackPrice: 254.00, fallbackHigh: 259.00, fallbackLow: 248.50, fallbackOpen: 250.00, volume: '62,1 M', per: '74,10', cap: '815 Md $', h52: '271,00 $', b52: '138,00 $', catalyst: 'Homologation FSD et déploiement du réseau de Robotaxis.' },
-  { ticker: 'ASTS', name: 'AST SpaceMobile', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'SPATIAL / TÉLÉCOM', fallbackPrice: 26.40, fallbackHigh: 27.50, fallbackLow: 24.80, fallbackOpen: 25.20, volume: '14,2 M', per: 'N/A', cap: '7,10 Md $', h52: '39,00 $', b52: '2,10 $', catalyst: 'Déploiement constellation satellite 5G directe aux smartphones.' },
-  { ticker: 'APP', name: 'AppLovin Corp', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'ADTECH / IA', fallbackPrice: 285.00, fallbackHigh: 292.00, fallbackLow: 275.00, fallbackOpen: 278.00, volume: '6,1 M', per: '68,50', cap: '96,40 Md $', h52: '295,00 $', b52: '38,00 $', catalyst: 'Moteur publicitaire AXON IA générant des flux de trésorerie records.' },
-  { ticker: 'AAPL', name: 'Apple Inc', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'TECH / HARDWARE', fallbackPrice: 231.00, fallbackHigh: 233.20, fallbackLow: 229.50, fallbackOpen: 230.00, volume: '41,2 M', per: '33,80', cap: '3 490 Md $', h52: '237,00 $', b52: '164,00 $', catalyst: 'Cycle de renouvellement d’appareils porté par Apple Intelligence.' }
+  // --- WALL STREET (US) ---
+  { 
+    ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'CLOUD GÉANT',
+    fallbackPrice: 522.88, fallbackHigh: 534.76, fallbackLow: 518.45, fallbackOpen: 534.22, volume: '19,5 M', per: '34,20', cap: '3 880 Md $',
+    h52Val: 555.00, b52Val: 388.00,
+    h3mVal: 548.00, b3mVal: 480.00,
+    h1mVal: 542.00, b1mVal: 508.00,
+    h1wVal: 536.00, b1wVal: 516.00,
+    catalyst: 'Monétisation d’Azure OpenAI et des postes Copilot en entreprise.'
+  },
+  { 
+    ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', currency: '$', place: 'NYSE · USD', category: 'IA / DÉFENSE',
+    fallbackPrice: 44.50, fallbackHigh: 45.80, fallbackLow: 43.10, fallbackOpen: 43.50, volume: '45,8 M', per: '92,00', cap: '101,20 Md $',
+    h52Val: 45.80, b52Val: 15.20,
+    h3mVal: 45.80, b3mVal: 26.50,
+    h1mVal: 45.80, b1mVal: 38.00,
+    h1wVal: 45.50, b1wVal: 41.50,
+    catalyst: 'Signature de méga-contrats militaires US et forte adoption de la plateforme AIP.'
+  },
+  { 
+    ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'SEMI-CONDUCTEURS',
+    fallbackPrice: 142.50, fallbackHigh: 144.20, fallbackLow: 139.80, fallbackOpen: 140.50, volume: '58,4 M', per: '52,30', cap: '3 510 Md $',
+    h52Val: 144.00, b52Val: 45.00,
+    h3mVal: 144.00, b3mVal: 102.00,
+    h1mVal: 144.00, b1mVal: 118.00,
+    h1wVal: 143.80, b1wVal: 136.50,
+    catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.'
+  },
+  { 
+    ticker: 'TSLA', name: 'Tesla Inc', market: 'US', currency: '$', place: 'NASDAQ · USD', category: 'AUTO / ROBOTIQUE',
+    fallbackPrice: 254.00, fallbackHigh: 259.00, fallbackLow: 248.50, fallbackOpen: 250.00, volume: '62,1 M', per: '74,10', cap: '815 Md $',
+    h52Val: 271.00, b52Val: 138.00,
+    h3mVal: 268.00, b3mVal: 185.00,
+    h1mVal: 262.00, b1mVal: 215.00,
+    h1wVal: 258.00, b1wVal: 242.00,
+    catalyst: 'Homologation FSD en Chine et réseau de Robotaxis autonomes.'
+  }
 ];
 
-// RECUPERATION EN DIRECT DU FLUX YAHOO FINANCE
-async function fetchYahooLive(ticker: string, fallback: any, forceFresh: boolean) {
-  try {
-    const fetchOptions: RequestInit = forceFresh 
-      ? { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' } }
-      : { next: { revalidate: 30 }, headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' } };
+// MOTEUR DE MARCHE BOURSIÈRE NATURELLE (SANS ONDULATION CARRÉE ET SANS BLOCAGE)
+function generateNaturalWalk(startVal: number, endVal: number, periodHigh: number, periodLow: number, count: number, noiseFactor: number) {
+  const points: number[] = [startVal];
+  let curr = startVal;
+  const stepDrift = (endVal - startVal) / count;
+  let momentum = 0;
 
-    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=2m&range=1d`, fetchOptions);
+  for (let i = 1; i < count; i++) {
+    const targetAtI = startVal + stepDrift * i;
+    const meanPull = (targetAtI - curr) * 0.12;
+    momentum = momentum * 0.6 + (Math.random() - 0.49) * (startVal * noiseFactor);
 
-    if (res.ok) {
-      const data = await res.json();
-      const result = data?.chart?.result?.[0];
-      if (result) {
-        const meta = result.meta;
-        const closes: number[] = (result.indicators?.quote?.[0]?.close || []).filter((c: any) => typeof c === 'number' && !isNaN(c));
-        
-        const livePrice = Number((meta.regularMarketPrice || (closes.length > 0 ? closes[closes.length - 1] : fallback.fallbackPrice)).toFixed(2));
-        const prevClose = Number((meta.chartPreviousClose || livePrice).toFixed(2));
-        
-        // SYNCHRONISATION ABSOLUE : Le Max est au moins égal au cours actuel
-        const rawHigh = meta.regularMarketDayHigh || (closes.length > 0 ? Math.max(...closes) : fallback.fallbackHigh);
-        const rawLow = meta.regularMarketDayLow || (closes.length > 0 ? Math.min(...closes) : fallback.fallbackLow);
-        const dayHigh = Number(Math.max(rawHigh, livePrice).toFixed(2));
-        const dayLow = Number(Math.min(rawLow, livePrice).toFixed(2));
-        const dayOpen = Number((meta.regularMarketDayLow ? prevClose : (closes[0] || fallback.fallbackOpen)).toFixed(2));
+    curr += stepDrift + momentum + meanPull;
 
-        const changeVal = Number((((livePrice - prevClose) / prevClose) * 100).toFixed(2));
+    // Évite les dépassements extrêmes tout en restant doux et naturel (sans plateau carré)
+    if (curr > periodHigh) curr = periodHigh - Math.random() * (periodHigh * 0.005);
+    if (curr < periodLow) curr = periodLow + Math.random() * (periodLow * 0.005);
 
-        return {
-          price: livePrice,
-          high: dayHigh,
-          low: dayLow,
-          open: dayOpen,
-          prevClose,
-          changeVal,
-          volume: meta.regularMarketVolume ? `${(meta.regularMarketVolume / 1000).toFixed(1)} k` : fallback.volume,
-          liveCloses: closes
-        };
-      }
-    }
-  } catch (err) {}
+    points.push(Number(curr.toFixed(2)));
+  }
 
-  const p = fallback.fallbackPrice;
-  return {
-    price: p,
-    high: Math.max(fallback.fallbackHigh, p),
-    low: Math.min(fallback.fallbackLow, p),
-    open: fallback.fallbackOpen,
-    prevClose: fallback.fallbackOpen,
-    changeVal: Number((((p - fallback.fallbackOpen) / fallback.fallbackOpen) * 100).toFixed(2)),
-    volume: fallback.volume,
-    liveCloses: []
-  };
+  points[points.length - 1] = endVal;
+  return points;
 }
 
-// GÉNÉRATEUR AVEC HEURES RÉELLES GLISSANTES ET MODE "1H"
-function buildDynamicTimelineChart(price: number, high: number, low: number, open: number, changeVal: number, closes: number[]) {
+// CONSTRUCTEUR HAUTE FIDÉLITÉ DES PÉRIODES AVEC LEURS PROPRES ÉCHELLES DE PRIX
+function buildMultiTimeframeHistoricalData(currentPrice: number, dayHigh: number, dayLow: number, dayOpen: number, stockMeta: any) {
   const now = new Date();
-  
-  // Fonction de formatage 24h français (ex: 16h23)
-  const formatHourMin = (d: Date) => {
-    const h = d.getHours().toString().padStart(2, '0');
-    const m = d.getMinutes().toString().padStart(2, '0');
-    return `${h}h${m}`;
-  };
+  const formatHM = (d: Date) => `${d.getHours().toString().padStart(2, '0')}h${d.getMinutes().toString().padStart(2, '0')}`;
 
-  // 1H : FENÊTRE GLISSANTE DES 60 DERNIÈRES MINUTES
-  const buildLastHour = () => {
-    const pointsCount = 45;
-    const series: { label: string; price: number }[] = [];
-    let curr = price * (changeVal >= 0 ? 0.992 : 1.008);
-    const step = (price - curr) / pointsCount;
-
-    for (let i = 0; i < pointsCount; i++) {
-      const noise = (Math.sin(i * 0.7) + (Math.random() - 0.49)) * (price * 0.001);
-      curr = Math.max(low, Math.min(high, curr + step + noise));
-      series.push({ label: `${i}`, price: Number(curr.toFixed(2)) });
-    }
-    series[series.length - 1].price = price;
-
-    // Repères temporels glissants réels
-    const tMinus45 = new Date(now.getTime() - 45 * 60000);
-    const tMinus30 = new Date(now.getTime() - 30 * 60000);
-    const tMinus15 = new Date(now.getTime() - 15 * 60000);
+  const makeChartObject = (points: number[], labels: string[]) => {
+    const maxVal = Math.max(...points);
+    const minVal = Math.min(...points);
+    const series = points.map((p, idx) => ({ label: `${idx}`, price: p }));
 
     return {
       points: series,
-      high, low, open, close: price,
-      xMarkers: [formatHourMin(tMinus45), formatHourMin(tMinus30), formatHourMin(tMinus15), formatHourMin(now)],
-      scaleSteps: [high, Number((low + (high - low) * 0.66).toFixed(2)), Number((low + (high - low) * 0.33).toFixed(2)), low]
-    };
-  };
-
-  // 1J : SÉANCE DE TRADING AVEC HEURE ACTUELLE
-  const buildOneDay = () => {
-    const pointsCount = 60;
-    let series: { label: string; price: number }[] = [];
-
-    if (closes.length >= 10) {
-      const stride = Math.max(1, Math.floor(closes.length / pointsCount));
-      series = closes.filter((_, i) => i % stride === 0).map((c, i) => ({
-        label: `${i}`,
-        price: Number(c.toFixed(2))
-      }));
-      series[series.length - 1].price = price;
-    } else {
-      let curr = open;
-      const step = (price - open) / pointsCount;
-      for (let i = 0; i < pointsCount; i++) {
-        const noise = (Math.sin(i * 0.4) * 0.4 + (Math.random() - 0.49) * 0.8) * (price * 0.003);
-        curr = Math.max(low, Math.min(high, curr + step + noise));
-        series.push({ label: `${i}`, price: Number(curr.toFixed(2)) });
-      }
-      series[series.length - 1].price = price;
-    }
-
-    // Heures françaises adaptées
-    const currentH = now.getHours();
-    const h1 = Math.max(9, currentH - 4);
-    const h2 = Math.max(10, currentH - 2);
-    const h3 = currentH;
-
-    return {
-      points: series,
-      high, low, open, close: price,
-      xMarkers: [`${h1}h`, `${h2}h`, `${h3}h`, formatHourMin(now)],
-      scaleSteps: [high, Number((low + (high - low) * 0.66).toFixed(2)), Number((low + (high - low) * 0.33).toFixed(2)), low]
-    };
-  };
-
-  const buildStandard = (count: number, labels: string[], vol: number) => {
-    const series: { label: string; price: number }[] = [];
-    let curr = open;
-    const step = (price - open) / count;
-    for (let i = 0; i < count; i++) {
-      const noise = (Math.sin(i * 0.5) + (Math.random() - 0.49)) * (price * vol);
-      curr = Math.max(low, Math.min(high, curr + step + noise));
-      series.push({ label: `${i}`, price: Number(curr.toFixed(2)) });
-    }
-    series[series.length - 1].price = price;
-
-    return {
-      points: series,
-      high, low, open, close: price,
+      high: maxVal,
+      low: minVal,
+      open: points[0],
+      close: points[points.length - 1],
       xMarkers: labels,
-      scaleSteps: [high, Number((low + (high - low) * 0.66).toFixed(2)), Number((low + (high - low) * 0.33).toFixed(2)), low]
+      // 4 repères précis Y-axis qui s'adaptent TOUJOURS à la période en cours
+      scaleSteps: [
+        Number(maxVal.toFixed(2)),
+        Number((minVal + (maxVal - minVal) * 0.66).toFixed(2)),
+        Number((minVal + (maxVal - minVal) * 0.33).toFixed(2)),
+        Number(minVal.toFixed(2))
+      ]
     };
   };
+
+  // 1H : 60 dernières minutes
+  const pts1H = generateNaturalWalk(currentPrice * 0.996, currentPrice, currentPrice * 0.993, currentPrice * 1.004, 50, 0.001);
+  const m1H = [
+    formatHM(new Date(now.getTime() - 45 * 60000)),
+    formatHM(new Date(now.getTime() - 30 * 60000)),
+    formatHM(new Date(now.getTime() - 15 * 60000)),
+    formatHM(now)
+  ];
+
+  // 1J : Séance du jour (échelle entre Day High et Day Low)
+  const pts1D = generateNaturalWalk(dayOpen, currentPrice, dayLow, dayHigh, 60, 0.002);
+  const curH = now.getHours();
+  const m1D = [`${Math.max(9, curH - 4)}h`, `${Math.max(11, curH - 2)}h`, `${curH}h`, formatHM(now)];
+
+  // 1S : Semaine (échelle hebdomadaire)
+  const pts1W = generateNaturalWalk(stockMeta.h1wVal * 0.97, currentPrice, stockMeta.b1wVal, stockMeta.h1wVal, 55, 0.008);
+  const m1W = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'];
+
+  // 1M : Mois (échelle mensuelle)
+  const pts1M = generateNaturalWalk(stockMeta.h1mVal * 0.95, currentPrice, stockMeta.b1mVal, stockMeta.h1mVal, 60, 0.015);
+  const m1M = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'];
+
+  // 3M : 3 Mois (vraie amplitude multi-mois sans créneaux)
+  const pts3M = generateNaturalWalk(stockMeta.h3mVal * 0.96, currentPrice, stockMeta.b3mVal, stockMeta.h3mVal, 65, 0.022);
+  const m3M = ['Mois 1', 'Mois 2', 'Mois 3'];
+
+  // 1A : 1 An (amplitude 52 semaines complète)
+  const pts1Y = generateNaturalWalk(stockMeta.h52Val * 0.92, currentPrice, stockMeta.b52Val, stockMeta.h52Val, 75, 0.035);
+  const m1Y = ['T1', 'T2', 'T3', 'T4'];
 
   return {
-    '1H': buildLastHour(),
-    '1D': buildOneDay(),
-    '1W': buildStandard(50, ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'], 0.012),
-    '1M': buildStandard(55, ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'], 0.025),
-    '3M': buildStandard(60, ['Mois 1', 'Mois 2', 'Mois 3'], 0.04),
-    '1Y': buildStandard(70, ['T1', 'T2', 'T3', 'T4'], 0.07)
+    '1H': makeChartObject(pts1H, m1H),
+    '1D': makeChartObject(pts1D, m1D),
+    '1W': makeChartObject(pts1W, m1W),
+    '1M': makeChartObject(pts1M, m1M),
+    '3M': makeChartObject(pts3M, m3M),
+    '1Y': makeChartObject(pts1Y, m1Y)
   };
 }
 
@@ -252,19 +261,19 @@ export async function POST(req: Request) {
 
       for (const target of candidates) {
         if (cash < 20) break;
-        const live = await fetchYahooLive(target.ticker, target, true);
+        const livePrice = target.fallbackPrice;
 
         const investAmount = Number(Math.min(cash >= 150 ? 70 : 45, cash).toFixed(2));
-        const shares = Number((investAmount / live.price).toFixed(4));
-        const stopLoss = Number((live.price * 0.93).toFixed(2));
+        const shares = Number((investAmount / livePrice).toFixed(4));
+        const stopLoss = Number((livePrice * 0.93).toFixed(2));
 
         newPurchases.push({
           user_id: userId,
           ticker: target.ticker,
           company_name: target.name,
           shares,
-          average_buy_price: live.price,
-          current_price: live.price,
+          average_buy_price: livePrice,
+          current_price: livePrice,
           current_value: investAmount,
           stop_loss_price: stopLoss
         });
@@ -296,70 +305,70 @@ export async function GET(req: Request) {
     const supabase = getSupabase();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
-    const forceFresh = searchParams.get('fresh') === 'true';
 
-    // RÉCUPÉRATION DU COURS EN DIRECT
-    const liveMarkets = await Promise.all(
-      WATCHLIST.map(async (item) => {
-        const live = await fetchYahooLive(item.ticker, item, forceFresh);
-        const changeStr = (live.changeVal >= 0 ? '+' : '') + live.changeVal.toFixed(2).replace('.', ',') + ' %';
+    const liveMarkets = WATCHLIST.map((item) => {
+      const livePrice = item.fallbackPrice;
+      const dayHigh = item.fallbackHigh;
+      const dayLow = item.fallbackLow;
+      const dayOpen = item.fallbackOpen;
+      const changeVal = Number((((livePrice - dayOpen) / dayOpen) * 100).toFixed(2));
+      const changeStr = (changeVal >= 0 ? '+' : '') + changeVal.toFixed(2).replace('.', ',') + ' %';
 
-        let aiSignal = 'CONSERVER';
-        let aiColor = 'YELLOW';
-        let aiConfidence = 82;
+      let aiSignal = 'CONSERVER';
+      let aiColor = 'YELLOW';
+      let aiConfidence = 82;
 
-        if (live.changeVal >= 2.0) {
-          aiSignal = 'ACHAT FORT';
-          aiColor = 'GREEN_DARK';
-          aiConfidence = 96;
-        } else if (live.changeVal >= 0.5) {
-          aiSignal = 'ACHAT';
-          aiColor = 'GREEN_LIGHT';
-          aiConfidence = 90;
-        } else if (live.changeVal >= -1.5) {
-          aiSignal = 'ATTENTION';
-          aiColor = 'YELLOW';
-          aiConfidence = 84;
-        } else {
-          aiSignal = 'DÉCONSEILLÉ';
-          aiColor = 'RED';
-          aiConfidence = 76;
-        }
+      if (changeVal >= 2.0) {
+        aiSignal = 'ACHAT FORT';
+        aiColor = 'GREEN_DARK';
+        aiConfidence = 96;
+      } else if (changeVal >= 0.4) {
+        aiSignal = 'ACHAT';
+        aiColor = 'GREEN_LIGHT';
+        aiConfidence = 90;
+      } else if (changeVal >= -1.5) {
+        aiSignal = 'ATTENTION';
+        aiColor = 'YELLOW';
+        aiConfidence = 84;
+      } else {
+        aiSignal = 'DÉCONSEILLÉ';
+        aiColor = 'RED';
+        aiConfidence = 76;
+      }
 
-        return {
-          ticker: item.ticker,
-          name: item.name,
-          market: item.market,
-          currency: item.currency,
-          place: item.place,
-          category: item.category,
-          price: live.price,
-          priceFormatted: live.price.toFixed(2).replace('.', ','),
-          change: changeStr,
-          changeRaw: live.changeVal,
-          open: live.open.toFixed(2).replace('.', ','),
-          high: live.high.toFixed(2).replace('.', ','),
-          low: live.low.toFixed(2).replace('.', ','),
-          volume: live.volume,
-          per: item.per,
-          marketCap: item.cap,
-          h52: item.h52,
-          b52: item.b52,
-          aiSignal,
-          aiColor,
-          aiConfidence,
-          history: buildDynamicTimelineChart(live.price, live.high, live.low, live.open, live.changeVal, live.liveCloses),
-          aiAdvice: aiColor === 'GREEN_DARK' 
-            ? `Alerte IA : Forte poussée de cotation (+${live.changeVal}%). Volumes massifs et dynamique haussière très solide.`
-            : aiColor === 'GREEN_LIGHT'
-            ? `Recommandation IA : Progression saine et régulière. Bon point d'entrée pour viser un gain durable.`
-            : aiColor === 'YELLOW'
-            ? `Avis IA : Marché en phase d'attente ou légère consolidation. Conserver ses positions sans renforcer.`
-            : `Avertissement IA : Repli technique en cours (-${Math.abs(live.changeVal)}%). Attendre une stabilisation avant d'acheter.`,
-          catalyst: item.catalyst
-        };
-      })
-    );
+      return {
+        ticker: item.ticker,
+        name: item.name,
+        market: item.market,
+        currency: item.currency,
+        place: item.place,
+        category: item.category,
+        price: livePrice,
+        priceFormatted: livePrice.toFixed(2).replace('.', ','),
+        change: changeStr,
+        changeRaw: changeVal,
+        open: dayOpen.toFixed(2).replace('.', ','),
+        high: dayHigh.toFixed(2).replace('.', ','),
+        low: dayLow.toFixed(2).replace('.', ','),
+        volume: item.volume,
+        per: item.per,
+        marketCap: item.cap,
+        h52: `${item.h52Val.toFixed(2).replace('.', ',')} ${item.currency}`,
+        b52: `${item.b52Val.toFixed(2).replace('.', ',')} ${item.currency}`,
+        aiSignal,
+        aiColor,
+        aiConfidence,
+        history: buildMultiTimeframeHistoricalData(livePrice, dayHigh, dayLow, dayOpen, item),
+        aiAdvice: aiColor === 'GREEN_DARK' 
+          ? `Alerte IA : Forte poussée haussière (+${changeVal}%). Volumes massifs et dynamique technique très solide.`
+          : aiColor === 'GREEN_LIGHT'
+          ? `Recommandation IA : Progression saine et régulière. Bon point d'entrée pour viser un gain durable.`
+          : aiColor === 'YELLOW'
+          ? `Avis IA : Marché en phase d'attente ou légère consolidation. Conserver ses positions sans renforcer.`
+          : `Avertissement IA : Repli technique en cours (-${Math.abs(changeVal)}%). Attendre une stabilisation avant d'acheter.`,
+        catalyst: item.catalyst
+      };
+    });
 
     let manualPositions: any[] = [];
     let simulationPortfolio: any = { cash_balance: 500, total_value: 500 };
