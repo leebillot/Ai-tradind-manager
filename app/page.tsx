@@ -1,352 +1,550 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { 
-  Bot, TrendingUp, RefreshCw, Zap, Wallet, 
-  RotateCcw, Award, ArrowUpRight, ArrowDownRight, Layers, Sparkles,
-  Clock, ShoppingCart, Globe, Activity
+  Menu, X, Bot, TrendingUp, RefreshCw, Zap, Layers, 
+  RotateCcw, Globe, LogOut, CheckCircle, ShieldAlert, 
+  Sparkles, Plus, Trash2, ArrowUpRight, ArrowDownRight, Clock
 } from 'lucide-react';
 
-export default function Dashboard() {
-  const [portfolio, setPortfolio] = useState<any>({ cash_balance: 500, total_portfolio_value: 500, trading_mode: 'MANUAL' });
-  const [positions, setPositions] = useState<any[]>([]);
-  const [analyses, setAnalyses] = useState<any[]>([]);
-  const [markets, setMarkets] = useState<any[]>([]);
-  const [aiScore, setAiScore] = useState<number>(1000);
-  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+const supabase = createClient(
+  (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, ''),
+  (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim().replace(/^["']|["']$/g, '')
+);
+
+export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'MARKETS' | 'AUTO_SIM' | 'MY_PORTFOLIO'>('MARKETS');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
-  
-  // Timer de 5 minutes
-  const [countdown, setCountdown] = useState(300);
-  const modeRef = useRef('MANUAL');
 
-  // Double mémoire active : Restauration immédiate depuis le stockage local
+  // Données
+  const [markets, setMarkets] = useState<any[]>([]);
+  const [manualPositions, setManualPositions] = useState<any[]>([]);
+  const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
+  const [simPositions, setSimPositions] = useState<any[]>([]);
+
+  // Filtre Bourse
+  const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
+
+  // Formulaire d'ajout d'action dans Mon Portefeuille
+  const [newTicker, setNewTicker] = useState('MC.PA');
+  const [newShares, setNewShares] = useState('2');
+  const [newPrice, setNewPrice] = useState('610');
+  const [newThreshold, setNewThreshold] = useState('3.0');
+
+  // Formulaire Auth
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  // 1. Initialisation de la session utilisateur
   useEffect(() => {
-    try {
-      const savedMode = localStorage.getItem('ai_trading_mode');
-      const savedPortfolio = localStorage.getItem('ai_trading_portfolio');
-      const savedPositions = localStorage.getItem('ai_trading_positions');
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchData(session.user.id);
+    });
 
-      if (savedMode) {
-        modeRef.current = savedMode;
-        setPortfolio((prev: any) => ({ ...prev, trading_mode: savedMode }));
-      }
-      if (savedPortfolio) {
-        setPortfolio(JSON.parse(savedPortfolio));
-      }
-      if (savedPositions) {
-        setPositions(JSON.parse(savedPositions));
-      }
-    } catch (e) {
-      console.error('Erreur chargement local:', e);
-    }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchData(session.user.id);
+    });
 
-    refreshData();
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Décompte de 5 minutes
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          triggerAutoScan();
-          return 300;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const triggerAutoScan = () => {
-    handleAction('SCAN', { mode: modeRef.current }, 'silent');
-  };
-
-  const refreshData = async () => {
+  // 2. Chargement des données
+  const fetchData = async (userId?: string) => {
     try {
-      const res = await fetch('/api/scan');
+      const uId = userId || user?.id;
+      const res = await fetch(`/api/scan${uId ? `?userId=${uId}` : ''}`);
       const data = await res.json();
-      
-      if (data.portfolio) {
-        const savedMode = localStorage.getItem('ai_trading_mode');
-        const finalMode = savedMode || data.portfolio.trading_mode || 'MANUAL';
-        data.portfolio.trading_mode = finalMode;
-        modeRef.current = finalMode;
-        setPortfolio(data.portfolio);
-        localStorage.setItem('ai_trading_portfolio', JSON.stringify(data.portfolio));
-      }
-      if (data.positions && data.positions.length > 0) {
-        setPositions(data.positions);
-        localStorage.setItem('ai_trading_positions', JSON.stringify(data.positions));
-      }
-      if (data.analyses) setAnalyses(data.analyses);
       if (data.markets) setMarkets(data.markets);
-      if (data.ai_score !== undefined) setAiScore(data.ai_score);
-    } catch (e) {
-      console.error(e);
+      if (data.manualPositions) setManualPositions(data.manualPositions);
+      if (data.simulationPortfolio) setSimPortfolio(data.simulationPortfolio);
+      if (data.simulationPositions) setSimPositions(data.simulationPositions);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const handleAction = async (action: string, payload: any = {}, actionKey = 'action') => {
-    if (actionKey !== 'silent') setLoadingKey(actionKey);
-    setStatusMsg('Transmission au courtier en direct...');
+  // Connexion / Inscription
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatusMsg('');
     try {
-      const activeMode = payload.mode !== undefined ? payload.mode : modeRef.current;
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+        if (error) throw error;
+        if (data.user) {
+          await supabase.from('user_profiles').upsert({ id: data.user.id, email: authEmail, alert_email: authEmail });
+          setStatusMsg('Compte créé avec succès ! Connecté.');
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        if (error) throw error;
+        setStatusMsg('Connexion réussie.');
+      }
+    } catch (err: any) {
+      setStatusMsg('Erreur auth : ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Ajout manuel d'une position réelle
+  const handleAddManual = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setLoading(true);
+    const m = markets.find(x => x.ticker === newTicker);
+    try {
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, mode: activeMode, ...payload })
+        body: JSON.stringify({
+          action: 'ADD_MANUAL_POSITION',
+          userId: user.id,
+          ticker: newTicker,
+          name: m?.name || newTicker,
+          shares: newShares,
+          averageBuyPrice: newPrice,
+          alertThreshold: newThreshold
+        })
       });
       const data = await res.json();
-
-      if (data.error) {
-        setStatusMsg('Erreur : ' + data.error);
-        return;
-      }
-
-      if (data.portfolio) {
-        data.portfolio.trading_mode = activeMode;
-        setPortfolio(data.portfolio);
-        localStorage.setItem('ai_trading_portfolio', JSON.stringify(data.portfolio));
-      }
-      if (data.positions) {
-        setPositions(data.positions);
-        localStorage.setItem('ai_trading_positions', JSON.stringify(data.positions));
-      }
-      if (data.analyses) setAnalyses(data.analyses);
-      if (data.markets) setMarkets(data.markets);
-      if (data.ai_score !== undefined) setAiScore(data.ai_score);
-      if (data.message) setStatusMsg(data.message);
-
-    } catch (err: any) {
-      setStatusMsg('Erreur de communication : ' + err.message);
+      setStatusMsg(data.message || 'Position ajoutée.');
+      fetchData();
     } finally {
-      setLoadingKey(null);
+      setLoading(false);
     }
   };
 
-  const toggleMode = (newMode: 'MANUAL' | 'AUTO') => {
-    modeRef.current = newMode;
-    localStorage.setItem('ai_trading_mode', newMode);
-    setPortfolio((prev: any) => ({ ...prev, trading_mode: newMode }));
-    handleAction('SET_MODE', { mode: newMode }, 'mode');
+  // Supprimer une action du vrai portefeuille
+  const handleDeleteManual = async (posId: string) => {
+    if (!user) return;
+    await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'DELETE_MANUAL_POSITION', userId: user.id, positionId: posId })
+    });
+    fetchData();
   };
 
-  const isAuto = portfolio?.trading_mode === 'AUTO';
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  // Déclencher un cycle de la simulation 500 €
+  const handleRunSimulation = async () => {
+    if (!user) return;
+    setLoading(true);
+    setStatusMsg('Gemini et Groq analysent les opportunités...');
+    try {
+      await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'AUTO_SIMULATION_STEP', userId: user.id })
+      });
+      await fetchData();
+      setStatusMsg('La simulation a ajusté ses investissements.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Calculs financiers réels pour les cases
-  const cash = Number(portfolio?.cash_balance ?? 500);
-  const currentPositionsVal = positions.reduce((acc, p) => acc + (Number(p.current_value) || 0), 0);
-  const totalInvested = positions.reduce((acc, p) => acc + (Number(p.cost_basis) || 0), 0);
-  const totalPnL = currentPositionsVal - totalInvested;
-  const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+  // Reset de la simulation 500 €
+  const handleResetSimulation = async () => {
+    if (!user || !confirm('Réinitialiser la simulation à 500 € ?')) return;
+    await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'RESET_SIMULATION', userId: user.id })
+    });
+    fetchData();
+  };
 
-  const filteredMarkets = markets.filter(m => {
-    if (selectedFilter === 'US') return m.market === 'NASDAQ' || m.market === 'NYSE';
-    if (selectedFilter === 'PARIS') return m.market === 'PARIS';
-    return true;
-  });
+  // ÉCRAN DE CONNEXION OBLIGATOIRE (POUR VERROUILLER LA MÉMOIRE)
+  if (!user) {
+    return (
+      <div style={{ backgroundColor: '#090d16', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: 'sans-serif' }}>
+        <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '2rem', borderRadius: '12px', maxWidth: '400px', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+            <Bot size={28} color="#38bdf8" />
+            <h2 style={{ margin: 0, fontSize: '1.4rem' }}>AI Trading Manager</h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+            Connectez-vous pour débloquer votre sentinelle boursière 24h/24 et sécuriser votre mémoire permanente.
+          </p>
 
-  return (
-    <div style={{ backgroundColor: '#090d16', color: '#f8fafc', minHeight: '100vh', padding: '1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-
-        {/* HEADER */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', padding: '0.6rem', borderRadius: '10px', display: 'flex' }}>
-              <Bot size={24} color="#ffffff" />
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Votre E-mail</label>
+              <input
+                type="email"
+                required
+                value={authEmail}
+                onChange={e => setAuthEmail(e.target.value)}
+                placeholder="nom@exemple.com"
+                style={{ width: '100%', padding: '0.7rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}
+              />
             </div>
             <div>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>AI Trading Manager</h1>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.8rem' }}>Wall Street & Paris • Double Mémoire Sécurisée</p>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Mot de passe</label>
+              <input
+                type="password"
+                required
+                value={authPassword}
+                onChange={e => setAuthPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{ width: '100%', padding: '0.7rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}
+              />
             </div>
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            
-            {/* SCORE DE L'IA & TIMER COMPACT */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.6rem',
-              backgroundColor: '#131b2e', border: '1px solid #2563eb', padding: '0.45rem 0.8rem',
-              borderRadius: '8px'
-            }}>
-              <Award size={18} color="#f59e0b" />
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+              {loading ? 'Chargement...' : isSignUp ? "S'inscrire" : 'Se connecter'}
+            </button>
+          </form>
+
+          {statusMsg && <p style={{ color: '#38bdf8', fontSize: '0.85rem', marginTop: '1rem' }}>{statusMsg}</p>}
+
+          <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8', marginTop: '1.5rem' }}>
+            {isSignUp ? 'Vous avez déjà un compte ?' : "Vous n'avez pas de compte ?"}
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', marginLeft: '0.4rem', fontWeight: 'bold' }}>
+              {isSignUp ? 'Se connecter' : "Créer un compte"}
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // INTERFACE PRINCIPALE CONNECTÉE
+  return (
+    <div style={{ backgroundColor: '#090d16', color: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      
+      {/* HEADER AVEC MENU 3 TRAITS */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', backgroundColor: '#111827', borderBottom: '1px solid #1f2937' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {/* BOUTON 3 TRAITS */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            {menuOpen ? <X size={26} /> : <Menu size={26} />}
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Bot size={22} color="#38bdf8" />
+            <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>AI Trading Manager</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{user.email}</span>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            title="Se déconnecter"
+            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+            <LogOut size={18} />
+          </button>
+        </div>
+      </header>
+
+      {/* MENU TIROIR (SLIDE-OUT) */}
+      {menuOpen && (
+        <div style={{ backgroundColor: '#172033', borderBottom: '1px solid #334155', padding: '1rem 1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { setActiveTab('MARKETS'); setMenuOpen(false); }}
+            style={{ padding: '0.6rem 1rem', borderRadius: '6px', border: 'none', backgroundColor: activeTab === 'MARKETS' ? '#2563eb' : '#1e293b', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+            1. Analyse du Marché
+          </button>
+          <button
+            onClick={() => { setActiveTab('AUTO_SIM'); setMenuOpen(false); }}
+            style={{ padding: '0.6rem 1rem', borderRadius: '6px', border: 'none', backgroundColor: activeTab === 'AUTO_SIM' ? '#2563eb' : '#1e293b', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+            2. Simulation Automatique (500 €)
+          </button>
+          <button
+            onClick={() => { setActiveTab('MY_PORTFOLIO'); setMenuOpen(false); }}
+            style={{ padding: '0.6rem 1rem', borderRadius: '6px', border: 'none', backgroundColor: activeTab === 'MY_PORTFOLIO' ? '#2563eb' : '#1e293b', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+            3. Mon Portefeuille Réel & Alertes
+          </button>
+        </div>
+      )}
+
+      {/* CONTENU PRINCIPAL */}
+      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
+        
+        {/* ======================================================== */}
+        {/* ONGLET 1 : ANALYSE DU MARCHÉ (ACCUEIL PAR DÉFAUT) */}
+        {/* ======================================================== */}
+        {activeTab === 'MARKETS' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
-                <div style={{ fontSize: '0.6rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Score IA</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#38bdf8' }}>{aiScore} pts</div>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Analyse & Prédictions du Marché</h2>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>
+                  Tendances de fond, catalyseurs financiers et alertes anticipées par Gemini & Groq.
+                </p>
               </div>
 
-              {/* TIMER COMPACT */}
-              <div style={{ borderLeft: '1px solid #334155', paddingLeft: '0.6rem', marginLeft: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#94a3b8', fontSize: '0.8rem' }}>
-                <Clock size={13} color="#38bdf8" />
-                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{formatTime(countdown)}</span>
+              {/* SÉLECTEUR BOURSE */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {(['ALL', 'US', 'PARIS'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setMarketFilter(f)}
+                    style={{
+                      padding: '0.5rem 0.9rem', borderRadius: '6px', border: '1px solid #334155',
+                      backgroundColor: marketFilter === f ? '#2563eb' : '#111827', color: '#fff',
+                      fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
+                    }}>
+                    {f === 'ALL' ? 'Tout le Marché' : f === 'US' ? 'Wall Street (New York)' : 'Paris (Euronext / CAC 40)'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* SWITCH AUTO / MANUEL */}
-            <button
-              onClick={() => toggleMode(isAuto ? 'MANUAL' : 'AUTO')}
-              disabled={loadingKey === 'mode'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                backgroundColor: isAuto ? '#dc2626' : '#10b981',
-                color: '#fff', border: 'none', padding: '0.65rem 1.15rem', borderRadius: '8px',
-                fontWeight: 700, cursor: 'pointer', transition: '0.2s', fontSize: '0.85rem'
-              }}>
-              <Zap size={15} />
-              {isAuto ? 'Mode AUTO Actif' : 'Activer Mode AUTO'}
-            </button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+              {markets.filter(m => marketFilter === 'ALL' || m.market === marketFilter).map((m) => (
+                <div key={m.ticker} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: '1.15rem', fontWeight: 800 }}>{m.ticker}</span>
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', backgroundColor: '#1e293b', padding: '0.2rem 0.5rem', borderRadius: '4px', color: '#94a3b8' }}>
+                        {m.market === 'US' ? 'NYSE / NASDAQ' : 'EURONEXT PARIS'}
+                      </span>
+                      <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{m.name}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{m.price} €</div>
+                      <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700 }}>{m.change}</div>
+                    </div>
+                  </div>
 
-            {/* SCAN IA */}
-            <button
-              onClick={() => handleAction('SCAN', {}, 'scan')}
-              disabled={loadingKey === 'scan'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                backgroundColor: '#1e293b', color: '#38bdf8', border: '1px solid #334155',
-                padding: '0.65rem 1rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem'
-              }}>
-              <RefreshCw size={15} className={loadingKey === 'scan' ? 'animate-spin' : ''} />
-              Scan Marchés
-            </button>
+                  <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem' }}>
+                    <div style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                      ⚡ Prochain Catalyseur / Bilan
+                    </div>
+                    <div style={{ color: '#cbd5e1' }}>{m.catalyst}</div>
+                  </div>
 
-            {/* RESET */}
-            <button
-              onClick={() => {
-                if (confirm('Réinitialiser le solde à 500 € ?')) {
-                  localStorage.removeItem('ai_trading_positions');
-                  handleAction('RESET', {}, 'reset');
-                }
-              }}
-              disabled={loadingKey === 'reset'}
-              title="Réinitialiser"
-              style={{
-                backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
-                padding: '0.65rem', borderRadius: '8px', cursor: 'pointer'
-              }}>
-              <RotateCcw size={15} />
-            </button>
-          </div>
-        </header>
-
-        {/* NOTIFICATION D'ACTION EN DIRECT */}
-        {statusMsg && (
-          <div style={{ backgroundColor: '#131b2e', borderLeft: '4px solid #38bdf8', padding: '0.75rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Activity size={16} color="#38bdf8" />
-            <span>{statusMsg}</span>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                    <strong style={{ color: '#f8fafc' }}>Tendance IA : </strong>{m.riskTrend}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* STATS HAUT GAUCHE : TOUTES LES CASES VISIBLES */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
-          
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>CASH DISPONIBLE</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#f8fafc' }}>
-              {cash.toFixed(2)} €
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#111827', border: '1px solid #10b981', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 700 }}>CAPITAL PLACÉ (ACTIONS)</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#10b981' }}>
-              {currentPositionsVal.toFixed(2)} €
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>VALEUR TOTALE COMPTE</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: '#38bdf8' }}>
-              {Number(portfolio?.total_portfolio_value ?? 500).toFixed(2)} €
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '0.85rem 1rem', borderRadius: '10px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>PLUS / MOINS-VALUE</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.2rem', color: totalPnL >= 0 ? '#10b981' : '#ef4444' }}>
-              {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} € ({totalPnLPercent.toFixed(1)}%)
-            </div>
-          </div>
-
-        </div>
-
-        {/* 1ER BLOC : VOS ACTIONS DÉTENUES (AU PREMIER PLAN) */}
-        <section style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Layers size={20} color="#10b981" />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Vos Actions Détenues ({positions.length})</h2>
-            </div>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Mise à jour automatique</span>
-          </div>
-
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', overflow: 'hidden' }}>
-            {positions.length === 0 ? (
-              <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
-                Aucune action détenue pour l'instant. Cliquez sur <strong>Acheter (40€)</strong> ci-dessous ou activez le <strong>Mode AUTO</strong>.
+        {/* ======================================================== */}
+        {/* ONGLET 2 : SIMULATION AUTOMATIQUE (500 € SANS POINTS VISIBLES) */}
+        {/* ======================================================== */}
+        {activeTab === 'AUTO_SIM' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Simulation Autonome (500 €)</h2>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>
+                  Gemini et Groq gèrent ce capital virtuel de façon autonome avec arbitrage dynamique.
+                </p>
               </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
+
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  onClick={handleRunSimulation}
+                  disabled={loading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.65rem 1.1rem', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>
+                  <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                  {loading ? 'IA en réflexion...' : 'Déclencher Cycle IA'}
+                </button>
+                <button
+                  onClick={handleResetSimulation}
+                  style={{ padding: '0.65rem', backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>
+                  <RotateCcw size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* BANDEAU FINANCIER */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '1rem', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>CASH DISPONIBLE</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.2rem' }}>
+                  {Number(simPortfolio.cash_balance).toFixed(2)} €
+                </div>
+              </div>
+              <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '1rem', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>VALEUR TOTALE DU PORTEFEUILLE</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.2rem', color: '#10b981' }}>
+                  {Number(simPortfolio.total_value).toFixed(2)} €
+                </div>
+              </div>
+            </div>
+
+            {/* POSITIONS DE LA SIMULATION */}
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+              Actions Détenues par l'IA ({simPositions.length})
+            </h3>
+            <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', overflow: 'hidden' }}>
+              {simPositions.length === 0 ? (
+                <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
+                  L'IA n'a pas encore ouvert de position. Cliquez sur « Déclencher Cycle IA ».
+                </div>
+              ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#172033', color: '#94a3b8', borderBottom: '1px solid #1f2937', textTransform: 'uppercase', fontSize: '0.75rem' }}>
+                    <tr style={{ backgroundColor: '#172033', color: '#94a3b8', borderBottom: '1px solid #1f2937', fontSize: '0.75rem' }}>
                       <th style={{ padding: '0.9rem 1.25rem' }}>Action</th>
                       <th style={{ padding: '0.9rem' }}>Parts</th>
                       <th style={{ padding: '0.9rem' }}>Achat / Actuel</th>
-                      <th style={{ padding: '0.9rem' }}>Investi</th>
                       <th style={{ padding: '0.9rem' }}>Valeur</th>
-                      <th style={{ padding: '0.9rem' }}>Gain / Perte</th>
-                      <th style={{ padding: '0.9rem 1.25rem', textAlign: 'right' }}>Vendre</th>
+                      <th style={{ padding: '0.9rem 1.25rem' }}>Gain / Perte</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map((pos) => {
-                      const isProfit = Number(pos.pnl) >= 0;
+                    {simPositions.map((p) => {
+                      const isProfit = Number(p.pnl) >= 0;
                       return (
-                        <tr key={pos.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                          <td style={{ padding: '1rem 1.25rem' }}>
-                            <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{pos.company_name}</div>
-                            <div style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>{pos.ticker}</div>
+                        <tr key={p.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '1rem 1.25rem', fontWeight: 700 }}>{p.company_name} ({p.ticker})</td>
+                          <td style={{ padding: '1rem' }}>{p.shares}</td>
+                          <td style={{ padding: '1rem' }}>{p.average_buy_price} € → {p.current_price} €</td>
+                          <td style={{ padding: '1rem', fontWeight: 700 }}>{p.current_value} €</td>
+                          <td style={{ padding: '1rem 1.25rem', color: isProfit ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                            {isProfit ? '+' : ''}{p.pnl} € ({p.pnl_percent}%)
                           </td>
-                          <td style={{ padding: '1rem', fontWeight: 600 }}>{pos.shares}</td>
-                          <td style={{ padding: '1rem' }}>
-                            <span style={{ color: '#94a3b8' }}>{Number(pos.average_buy_price).toFixed(2)} €</span>
-                            <span style={{ margin: '0 0.3rem', color: '#475569' }}>→</span>
-                            <strong>{Number(pos.current_price).toFixed(2)} €</strong>
-                          </td>
-                          <td style={{ padding: '1rem', color: '#94a3b8' }}>{Number(pos.cost_basis).toFixed(2)} €</td>
-                          <td style={{ padding: '1rem', fontWeight: 700 }}>{Number(pos.current_value).toFixed(2)} €</td>
-                          <td style={{ padding: '1rem' }}>
-                            <div style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                              padding: '0.3rem 0.6rem', borderRadius: '6px', fontWeight: 800, fontSize: '0.85rem',
-                              backgroundColor: isProfit ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                              color: isProfit ? '#10b981' : '#ef4444'
-                            }}>
-                              {isProfit ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                              {isProfit ? '+' : ''}{Number(pos.pnl).toFixed(2)} € ({Number(pos.pnl_percent).toFixed(1)}%)
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL & SENTINELLE 24H/24 */}
+        {/* ======================================================== */}
+        {activeTab === 'MY_PORTFOLIO' && (
+          <div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Mon Vrai Portefeuille & Sentinelle 24h/24</h2>
+              <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>
+                Renseignez ici vos vraies actions. L'IA surveille les marchés 24h/24 et vous alerte par e-mail au moindre risque de baisse ou opportunité d'arbitrage.
+              </p>
+            </div>
+
+            {/* FORMULAIRE D'AJOUT DE VRAIE ACTION */}
+            <form onSubmit={handleAddManual} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', padding: '1.25rem', borderRadius: '12px', marginBottom: '2rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.8rem', alignItems: 'end' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Action</label>
+                <select
+                  value={newTicker}
+                  onChange={e => setNewTicker(e.target.value)}
+                  style={{ width: '100%', padding: '0.65rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}>
+                  {markets.map(m => (
+                    <option key={m.ticker} value={m.ticker}>{m.ticker} - {m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Nombre d'actions</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={newShares}
+                  onChange={e => setNewShares(e.target.value)}
+                  style={{ width: '100%', padding: '0.65rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Prix d'achat unitaire (€)</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={newPrice}
+                  onChange={e => setNewPrice(e.target.value)}
+                  style={{ width: '100%', padding: '0.65rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Seuil d'alerte baisse (%)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={newThreshold}
+                  onChange={e => setNewThreshold(e.target.value)}
+                  placeholder="3.0"
+                  style={{ width: '100%', padding: '0.65rem', backgroundColor: '#090d16', border: '1px solid #334155', borderRadius: '6px', color: '#fff', marginTop: '0.2rem' }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{ padding: '0.7rem', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                <Plus size={16} /> Ajouter à mon Portefeuille
+              </button>
+            </form>
+
+            {/* LISTE DES ACTIONS RÉELLES SUIVIES */}
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+              Vos Actions Actuellement Surveillées ({manualPositions.length})
+            </h3>
+
+            <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', overflow: 'hidden' }}>
+              {manualPositions.length === 0 ? (
+                <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
+                  Vous n'avez pas encore ajouté d'action à surveiller. Utilisez le formulaire ci-dessus.
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#172033', color: '#94a3b8', borderBottom: '1px solid #1f2937', fontSize: '0.75rem' }}>
+                      <th style={{ padding: '0.9rem 1.25rem' }}>Actif</th>
+                      <th style={{ padding: '0.9rem' }}>Parts</th>
+                      <th style={{ padding: '0.9rem' }}>Prix Achat / Actuel</th>
+                      <th style={{ padding: '0.9rem' }}>Valeur</th>
+                      <th style={{ padding: '0.9rem' }}>Gain / Perte</th>
+                      <th style={{ padding: '0.9rem' }}>Seuil Alerte</th>
+                      <th style={{ padding: '0.9rem 1.25rem', textAlign: 'right' }}>Supprimer</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manualPositions.map((p) => {
+                      const isProfit = Number(p.pnl) >= 0;
+                      return (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '1rem 1.25rem', fontWeight: 700 }}>
+                            {p.company_name} ({p.ticker})
+                            <div style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 'normal', marginTop: '0.2rem' }}>
+                              {p.catalyst}
                             </div>
+                          </td>
+                          <td style={{ padding: '1rem' }}>{p.shares}</td>
+                          <td style={{ padding: '1rem' }}>{p.average_buy_price} € → {p.current_price} €</td>
+                          <td style={{ padding: '1rem', fontWeight: 700 }}>{p.current_value} €</td>
+                          <td style={{ padding: '1rem', color: isProfit ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                            {isProfit ? '+' : ''}{p.pnl} € ({p.pnl_percent}%)
+                          </td>
+                          <td style={{ padding: '1rem', color: '#f59e0b', fontSize: '0.85rem' }}>
+                            - {p.alert_threshold_pct}%
                           </td>
                           <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
                             <button
-                              onClick={() => handleAction('SELL', { positionId: pos.id }, `sell-${pos.id}`)}
-                              disabled={loadingKey === `sell-${pos.id}`}
-                              style={{
-                                backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
-                                border: '1px solid rgba(239, 68, 68, 0.25)', padding: '0.35rem 0.75rem',
-                                borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700
-                              }}>
-                              {loadingKey === `sell-${pos.id}` ? '...' : 'Vendre'}
+                              onClick={() => handleDeleteManual(p.id)}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                              <Trash2 size={16} />
                             </button>
                           </td>
                         </tr>
@@ -354,120 +552,12 @@ export default function Dashboard() {
                     })}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* 2E BLOC : ANALYSES MULTI-IA */}
-        <section style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Sparkles size={20} color="#38bdf8" />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Opportunités Détectées ({analyses.length})</h2>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-            {analyses.map((item, idx) => (
-              <div key={idx} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>{item.ticker}</span>
-                    <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', padding: '0.2rem 0.5rem', backgroundColor: '#1e293b', borderRadius: '4px', color: '#94a3b8' }}>
-                      {item.ai_name}
-                    </span>
-                  </div>
-                  <span style={{
-                    fontSize: '0.75rem', fontWeight: 800, padding: '0.25rem 0.6rem', borderRadius: '6px',
-                    backgroundColor: item.signal === 'STRONG_BUY' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)',
-                    color: item.signal === 'STRONG_BUY' ? '#10b981' : '#38bdf8',
-                    border: `1px solid ${item.signal === 'STRONG_BUY' ? '#10b981' : '#38bdf8'}`
-                  }}>
-                    {item.signal === 'STRONG_BUY' ? 'MAX POINTS' : 'ACHAT'}
-                  </span>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.3rem' }}>
-                    <span>Confiance IA</span>
-                    <strong style={{ color: '#f8fafc' }}>{item.confidence}%</strong>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: '#1e293b', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ width: `${item.confidence}%`, height: '100%', backgroundColor: item.confidence > 90 ? '#10b981' : '#38bdf8' }} />
-                  </div>
-                </div>
-
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.4' }}>
-                  {item.reasoning}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 3E BLOC : MARCHÉS SUIVIS (ACHATS MANUELS MULTIPLES) */}
-        <section>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Globe size={18} color="#94a3b8" />
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#94a3b8' }}>
-                Marchés Surveillés ({filteredMarkets.length})
-              </h2>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              {(['ALL', 'US', 'PARIS'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setSelectedFilter(f)}
-                  style={{
-                    backgroundColor: selectedFilter === f ? '#2563eb' : '#1e293b',
-                    color: selectedFilter === f ? '#fff' : '#94a3b8',
-                    border: '1px solid #334155', padding: '0.35rem 0.75rem', borderRadius: '6px',
-                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
-                  }}>
-                  {f === 'ALL' ? 'Tous' : f === 'US' ? 'Wall Street (US)' : 'Paris (CAC 40)'}
-                </button>
-              ))}
+              )}
             </div>
           </div>
+        )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '0.75rem' }}>
-            {filteredMarkets.map((m) => {
-              const isBuying = loadingKey === `buy-${m.ticker}`;
-              return (
-                <div key={m.ticker} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{ fontWeight: 800 }}>{m.ticker}</span>
-                      <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', backgroundColor: '#1e293b', borderRadius: '4px', color: '#94a3b8' }}>
-                        {m.market}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{m.name}</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginTop: '0.2rem' }}>
-                      {m.price} € <span style={{ fontSize: '0.75rem', color: m.change.startsWith('+') ? '#10b981' : '#ef4444' }}>{m.change}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleAction('MANUAL_BUY', { ticker: m.ticker, name: m.name, price: m.price, amount: 40 }, `buy-${m.ticker}`)}
-                    disabled={isBuying || cash < 40}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.3rem',
-                      backgroundColor: cash >= 40 ? '#2563eb' : '#334155',
-                      color: '#fff', border: 'none', padding: '0.5rem 0.8rem', borderRadius: '6px',
-                      fontSize: '0.8rem', fontWeight: 700, cursor: cash >= 40 && !isBuying ? 'pointer' : 'not-allowed'
-                    }}>
-                    <ShoppingCart size={14} />
-                    {isBuying ? '...' : 'Acheter (40€)'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-      </div>
+      </main>
     </div>
   );
 }
