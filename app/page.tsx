@@ -119,7 +119,13 @@ export default function App() {
       if (data.manualPositions) setManualPositions(data.manualPositions);
       if (data.simulationPortfolio) setSimPortfolio(data.simulationPortfolio);
       if (data.simulationPositions) setSimPositions(data.simulationPositions);
-      if (data.serverTime) setLastMarketTime(data.serverTime);
+      // Prend l'heure exacte de ton téléphone à la seconde où les cours sont reçus :
+const heureLocale = new Date().toLocaleTimeString('fr-FR', {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Paris'
+});
+setLastMarketTime(heureLocale);
 
       // Met à jour la modale si elle est ouverte
       if (chartStock) {
