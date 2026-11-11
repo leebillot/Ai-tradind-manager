@@ -23,8 +23,8 @@ function getBrowserSupabase() {
 const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
-  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction négociée au moment où la bourse a ouvert ce matin.' },
-  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui sur la séance.' },
+  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui. Le cours actuel ne peut pas le dépasser.' },
   'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré pour cette action aujourd’hui.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
@@ -47,23 +47,24 @@ export default function App() {
   const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
   const [simPositions, setSimPositions] = useState<any[]>([]);
 
-  // Accordéon des actions
+  // Accordéons
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
 
-  // Filtres
+  // Filtres Bourse & Les 4 Tris Complets
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
-  const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'DROP_24H'>('DEFAULT');
+  const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'GAIN_1Y' | 'DROP_24H' | 'DROP_1Y'>('DEFAULT');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
 
-  // Mon Portefeuille
+  // Recherche Universelle Portefeuille
   const [portfolioSearchQuery, setPortfolioSearchQuery] = useState('');
+  const [universalSearchResults, setUniversalSearchResults] = useState<any[]>([]);
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [newShares, setNewShares] = useState('5');
   const [newPrice, setNewPrice] = useState('');
   const [newThreshold, setNewThreshold] = useState('3.0');
 
-  // Modal Graphique Connecté à Yahoo Finance
+  // Modal Graphique
   const [chartStock, setChartStock] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1D');
   const [realChartData, setRealChartData] = useState<any>(null);
@@ -74,7 +75,7 @@ export default function App() {
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
   // Timers
-  const [lastMarketTime, setLastMarketTime] = useState<string>('18h41');
+  const [lastMarketTime, setLastMarketTime] = useState<string>('En direct');
   const [aiCountdown, setAiCountdown] = useState(300);
 
   // Auth
@@ -132,7 +133,24 @@ export default function App() {
     }
   };
 
-  // APPEL DIRECT YAHOO FINANCE À LA DEMANDE (SANS SIMULATION ARTIFICIELLE)
+  // RECHERCHE EN DIRECT DE N'IMPORTE QUELLE ENTREPRISE DANS LE MONDE
+  useEffect(() => {
+    const q = portfolioSearchQuery.trim();
+    if (q.length >= 2) {
+      const delay = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/scan?searchQuery=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          if (data.results) setUniversalSearchResults(data.results);
+        } catch (e) {}
+      }, 300);
+      return () => clearTimeout(delay);
+    } else {
+      setUniversalSearchResults([]);
+    }
+  }, [portfolioSearchQuery]);
+
+  // CHARGEMENT DIRECT DU VRAI GRAPHIQUE YAHOO
   const fetchLiveChartData = async (ticker: string, period: string) => {
     setChartLoading(true);
     setScrubPoint(null);
@@ -149,7 +167,6 @@ export default function App() {
     }
   };
 
-  // Charge les vraies données dès que la modale s'ouvre ou que la période change
   useEffect(() => {
     if (chartStock) {
       fetchLiveChartData(chartStock.ticker, chartPeriod);
@@ -199,8 +216,9 @@ export default function App() {
 
   const handleSelectStock = (stock: any) => {
     setSelectedStock(stock);
-    setNewPrice(stock.price.toString());
+    setNewPrice(stock.price ? stock.price.toString() : '');
     setPortfolioSearchQuery('');
+    setUniversalSearchResults([]);
   };
 
   const handleAddManual = async (e: React.FormEvent) => {
@@ -217,7 +235,7 @@ export default function App() {
           ticker: selectedStock.ticker,
           name: selectedStock.name,
           shares: newShares,
-          averageBuyPrice: newPrice || selectedStock.price,
+          averageBuyPrice: newPrice || selectedStock.price || 50,
           alertThreshold: newThreshold
         })
       });
@@ -278,18 +296,19 @@ export default function App() {
     return q.split(/\s+/).some(w => w.length > 2 && corpus.includes(w));
   };
 
+  // APPLICATION COMBINÉE DES MARCHÉS ET DES 4 TRIS LEBONCOIN
   const filteredAndSortedMarkets = markets
     .filter(m => {
       const matchFilter = marketFilter === 'ALL' || m.market === marketFilter;
       return matchFilter && smartMatch(m, marketSearchQuery);
     })
     .sort((a, b) => {
-      if (sortFilter === 'GAIN_24H') return b.changeRaw - a.changeRaw;
-      if (sortFilter === 'DROP_24H') return a.changeRaw - b.changeRaw;
+      if (sortFilter === 'GAIN_24H') return (b.changeRaw || 0) - (a.changeRaw || 0);
+      if (sortFilter === 'DROP_24H') return (a.changeRaw || 0) - (b.changeRaw || 0);
+      if (sortFilter === 'GAIN_1Y') return (b.change1YRaw || 0) - (a.change1YRaw || 0);
+      if (sortFilter === 'DROP_1Y') return (a.change1YRaw || 0) - (b.change1YRaw || 0);
       return 0;
     });
-
-  const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
 
   const getBadgeStyle = (colorType: string) => {
     switch (colorType) {
@@ -305,7 +324,7 @@ export default function App() {
     }
   };
 
-  // RENDU EXACT DU VRAI GRAPHIQUE YAHOO FINANCE AVEC CURSEUR TACTILE SANS CLIPPING
+  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE SANS CLIPPING
   const renderAppleStocksRealChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
@@ -315,7 +334,6 @@ export default function App() {
     const w = 280;
     const h = 180;
 
-    // Coordonnées de la courbe réelle (aucun plateau plat artificiel)
     const coords = points.map((pt: any, idx: number) => {
       const x = (idx / (points.length - 1)) * w;
       const y = h - ((pt.price - min) / range) * (h - 35) - 15;
@@ -326,7 +344,6 @@ export default function App() {
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: string[] = chartData.scaleSteps || [max.toString(), min.toString()];
 
-    // Gestion du curseur tactile magnétique au doigt
     const handleTouchOrMove = (clientX: number, target: HTMLElement) => {
       const rect = target.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
@@ -352,7 +369,6 @@ export default function App() {
             onPointerUp={() => setScrubPoint(null)}
             onTouchEnd={() => setScrubPoint(null)}>
             
-            {/* LIGNES DE QUADRILLAGE RÉELLES */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
@@ -364,16 +380,15 @@ export default function App() {
 
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
-                <linearGradient id="appleGradientTrueLive" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="appleGradientLiveChart2" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={strokeColor} stopOpacity="0.32" />
                   <stop offset="85%" stopColor={strokeColor} stopOpacity="0.04" />
                   <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <polygon points={polygon} fill="url(#appleGradientTrueLive)" />
+              <polygon points={polygon} fill="url(#appleGradientLiveChart2)" />
               <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
 
-              {/* CURSEUR ET POINT MAGNÉTIQUE QUI GLISSE SUR LA COURBE */}
               {scrubPoint && (
                 <g>
                   <line x1={scrubPoint.x} y1={0} x2={scrubPoint.x} y2={h} stroke="#8e8e93" strokeWidth="1" strokeDasharray="3 3" />
@@ -382,7 +397,6 @@ export default function App() {
               )}
             </svg>
 
-            {/* BULLE D'HEURE OU DE DATE FLOTTANTE AU TOUCHER */}
             {scrubPoint && (
               <div style={{
                 position: 'absolute', top: '4px', left: `${Math.max(10, Math.min(w - 70, scrubPoint.x - 30))}px`,
@@ -394,7 +408,6 @@ export default function App() {
             )}
           </div>
 
-          {/* AXE Y DROITE (CENTIMES PROPRES SANS DOUBLONS) */}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.4rem' }}>
             {scaleSteps.map((val, idx) => (
               <span key={idx}>{val}</span>
@@ -403,7 +416,6 @@ export default function App() {
 
         </div>
 
-        {/* AXE X TEMPOREL (VRAIS MOIS OU HEURES 24H) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -494,7 +506,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 2 COMPTEURS DISTINCTS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
             onClick={handleManualRefresh}
@@ -526,7 +537,7 @@ export default function App() {
           <button
             onClick={() => { setActiveTab('MARKETS'); setMenuOpen(false); }}
             style={{ padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: activeTab === 'MARKETS' ? '#0071e3' : '#2c2c2e', color: '#fff', fontWeight: 700, textAlign: 'left', cursor: 'pointer' }}>
-            1. Analyse du Marché
+            1. Marchés & Détecteur de Pépites
           </button>
           <button
             onClick={() => { setActiveTab('AUTO_SIM'); setMenuOpen(false); }}
@@ -552,7 +563,7 @@ export default function App() {
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : ANALYSE DU MARCHÉ (ACCORDÉON COMPACT) */}
+        {/* ONGLET 1 : MARCHÉS (LES 4 TRIS LEBONCOIN & ACCORDÉON) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
@@ -592,7 +603,7 @@ export default function App() {
                 ))}
               </div>
 
-              {/* FILTRES STYLE LEBONCOIN */}
+              {/* LES 4 FILTRES DE TRI COMPLETS (HAUSSE / BAISSE COURT ET LONG TERME) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.6rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
                 <span style={{ fontSize: '0.7rem', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                   <Filter size={12} /> Trier :
@@ -611,14 +622,26 @@ export default function App() {
                 </button>
 
                 <button
+                  onClick={() => setSortFilter('GAIN_1Y')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #34c759', backgroundColor: sortFilter === 'GAIN_1Y' ? 'rgba(52, 199, 89, 0.25)' : 'transparent', color: '#34c759', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📈 Hausse 1 An
+                </button>
+
+                <button
                   onClick={() => setSortFilter('DROP_24H')}
                   style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_24H' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📉 Baisse 24h
                 </button>
+
+                <button
+                  onClick={() => setSortFilter('DROP_1Y')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_1Y' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  🔻 Baisse 1 An
+                </button>
               </div>
             </div>
 
-            {/* BARRE DE RECHERCHE */}
+            {/* RECHERCHE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
@@ -630,7 +653,7 @@ export default function App() {
               />
             </div>
 
-            {/* LISTE EN ACCORDÉON COMPACT */}
+            {/* LISTE ACCORDÉON COMPACT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredAndSortedMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
@@ -850,7 +873,7 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (RECHERCHE FINE & ACCORDÉON) */}
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
           <div>
@@ -874,7 +897,7 @@ export default function App() {
                   backgroundColor: manualPnL >= 0 ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
                   color: manualPnL >= 0 ? '#34c759' : '#ff3b30'
                 }}>
-                  {manualPnL >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                  {manualPnL >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={12} />}
                   {manualPnL >= 0 ? '+' : ''}{manualPnL.toFixed(2).replace('.', ',')} € ({manualPnLPercent.toFixed(1)}%)
                 </div>
               </div>
@@ -885,20 +908,21 @@ export default function App() {
               </div>
             </div>
 
-            {/* RECHERCHE COMPACTE */}
+            {/* BARRE DE RECHERCHE UNIVERSELLE COMPACTE (TOUTES LES ACTIONS DU MONDE) */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 value={portfolioSearchQuery}
                 onChange={e => setPortfolioSearchQuery(e.target.value)}
-                placeholder="Rechercher une action à ajouter..."
+                placeholder="Rechercher une action à ajouter (ex: Renault, Kering, Apple, Air France...)"
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
 
-              {portfolioSuggestions.length > 0 && (
-                <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: '8px', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
-                  {portfolioSuggestions.map(s => (
+              {/* LISTE DÉROULANTE MONDIALE */}
+              {universalSearchResults.length > 0 && (
+                <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: '8px', zIndex: 20, maxHeight: '220px', overflowY: 'auto' }}>
+                  {universalSearchResults.map(s => (
                     <div
                       key={s.ticker}
                       onClick={() => handleSelectStock(s)}
@@ -907,7 +931,7 @@ export default function App() {
                         <strong style={{ fontSize: '0.9rem' }}>{s.name}</strong>
                         <span style={{ color: '#2997ff', fontSize: '0.8rem', marginLeft: '0.3rem' }}>({s.ticker})</span>
                       </div>
-                      <div style={{ fontWeight: 700, color: '#34c759', fontSize: '0.85rem' }}>{s.priceFormatted} {s.currency}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>{s.market === 'PARIS' ? 'Paris' : 'Wall Street'}</div>
                     </div>
                   ))}
                 </div>
@@ -918,12 +942,14 @@ export default function App() {
               <form onSubmit={handleAddManual} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2997ff', padding: '0.85rem', borderRadius: '10px', marginBottom: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 800, color: '#2997ff' }}>{selectedStock.name} ({selectedStock.ticker})</span>
-                  <button
-                    type="button"
-                    onClick={() => setNewPrice(selectedStock.price.toString())}
-                    style={{ background: 'none', border: 'none', color: '#34c759', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                    Cours actuel : {selectedStock.price} {selectedStock.currency}
-                  </button>
+                  {selectedStock.price && (
+                    <button
+                      type="button"
+                      onClick={() => setNewPrice(selectedStock.price.toString())}
+                      style={{ background: 'none', border: 'none', color: '#34c759', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                      Cours actuel : {selectedStock.price} €
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
@@ -939,14 +965,14 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat ({selectedStock.currency})</label>
+                    <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat unitaire</label>
                     <input
                       type="number"
                       step="any"
                       required
                       value={newPrice}
                       onChange={e => setNewPrice(e.target.value)}
-                      placeholder={selectedStock.price.toString()}
+                      placeholder="Prix d'achat"
                       style={{ width: '100%', padding: '0.55rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
                     />
                   </div>
@@ -1144,7 +1170,7 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE VRAI GRAPHIQUE YAHOO FINANCE SANS CLIPPING */}
+            {/* LE VRAI GRAPHIQUE YAHOO FINANCE SANS AUCUN CLIPPING */}
             {chartLoading ? (
               <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', fontSize: '0.85rem', backgroundColor: '#000', borderRadius: '12px' }}>
                 <RefreshCw size={18} className="animate-spin" style={{ marginRight: '0.5rem' }} /> Chargement du cours Yahoo Finance...
