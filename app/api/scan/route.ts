@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 15;
+export const maxDuration = 20;
 
 function getSupabase() {
   let rawUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
@@ -14,280 +14,138 @@ function getSupabase() {
   return createClient(rawUrl, rawKey);
 }
 
-// BASSIN BOURSIER COMPLET CALIBRÉ STYLE BOURSE APPLE
-const BASE_MARKET_UNIVERSE = [
-  // --- BOURSE DE PARIS (EURONEXT) ---
-  { 
-    ticker: 'DSY.PA', name: 'Dassault Systèmes SE', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 25.51, category: 'LOGICIELS / IA 3D', keywords: 'dassault systemes 3d cad tech france dsy',
-    volatility: 3.5, catalyst: 'Croissance à deux chiffres des licences cloud 3DEXPERIENCE et jumeaux virtuels.',
-    aiBaseAdvice: 'Leader mondial du logiciel 3D. Support technique solide autour des 25 €, profil d’accumulation idéal.',
-    open: 25.22, high: 25.64, low: 25.16, volume: '360,1 k', per: '25,77', marketCap: '33,53 Md €', h52: '38,20 €', b52: '24,10 €'
-  },
-  { 
-    ticker: 'AM.PA', name: 'Dassault Aviation', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 198.50, category: 'DÉFENSE / AÉRO', keywords: 'dassault aviation rafale falcon defense armee',
-    volatility: 4.2, catalyst: 'Commandes records à l’export pour les avions de combat Rafale.',
-    aiBaseAdvice: 'Visibilité financière record sur 10 ans. Rempart défensif idéal contre l’inflation.',
-    open: 196.20, high: 199.80, low: 195.50, volume: '220,4 k', per: '18,10', marketCap: '16,50 Md €', h52: '210,00 €', b52: '168,00 €'
-  },
-  { 
-    ticker: 'VU.PA', name: 'VusionGroup (SES-imagotag)', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 148.00, category: 'IOT / RETAIL IA', keywords: 'vusion ses imagotag walmart retail iot',
-    volatility: 6.5, catalyst: 'Déploiement massif des étiquettes intelligentes chez Walmart US.',
-    aiBaseAdvice: 'Pépite française leader mondial de l’IoT commercial. Forte rentabilité opérationnelle.',
-    open: 144.50, high: 149.80, low: 143.00, volume: '180,2 k', per: '24,60', marketCap: '2,40 Md €', h52: '162,00 €', b52: '88,00 €'
-  },
-  { 
-    ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 242.00, category: 'INFRA DATA CENTERS', keywords: 'schneider electric data center energie transition',
-    volatility: 3.8, catalyst: 'Équipement énergétique indispensable des data centers IA.',
-    aiBaseAdvice: 'Hausse structurelle saine : profil de rendement très régulier porté par l’électrification.',
-    open: 239.50, high: 243.20, low: 238.80, volume: '890,5 k', per: '31,20', marketCap: '136,20 Md €', h52: '248,00 €', b52: '155,00 €'
-  },
-  { 
-    ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 624.00, category: 'LUXE MONDIAL', keywords: 'lvmh luxe arnault louis vuitton dior',
-    volatility: 2.8, catalyst: 'Stabilisation de la consommation haut de gamme en Asie et fort pricing power.',
-    aiBaseAdvice: 'Support technique solide à 600 € : opportunité d’accumulation de long terme.',
-    open: 618.00, high: 627.50, low: 615.00, volume: '410,2 k', per: '21,50', marketCap: '312,40 Md €', h52: '885,00 €', b52: '582,00 €'
-  },
-  { 
-    ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 2080.00, category: 'ULTRA-LUXE', keywords: 'hermes birkin luxe maroquinerie',
-    volatility: 2.2, catalyst: 'Commandes saturées et marges opérationnelles au sommet.',
-    aiBaseAdvice: 'Le titre le plus solide de la cote européenne, imperméable aux crises.',
-    open: 2060.00, high: 2095.00, low: 2050.00, volume: '65,1 k', per: '48,20', marketCap: '218,60 Md €', h52: '2430,00 €', b52: '1850,00 €'
-  },
-  { 
-    ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 141.20, category: 'AÉRONAUTIQUE', keywords: 'airbus avions a320 a350 defense',
-    volatility: 3.2, catalyst: 'Cadences de livraisons d’avions commerciaux en hausse.',
-    aiBaseAdvice: 'Carnet de commandes supérieur à 8 000 avions assurant une visibilité record.',
-    open: 139.80, high: 142.10, low: 139.00, volume: '950,4 k', per: '26,80', marketCap: '111,20 Md €', h52: '172,00 €', b52: '124,00 €'
-  },
-  { 
-    ticker: 'TTE.PA', name: 'TotalEnergies', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR',
-    basePrice: 58.40, category: 'ÉNERGIE / DIVIDENDES', keywords: 'total energies petrol gaz dividende',
-    volatility: 2.5, catalyst: 'Rendement du dividende élevé (7%) et rachats d’actions réguliers.',
-    aiBaseAdvice: 'Actif de rendement très robuste sans volatilité excessive.',
-    open: 58.10, high: 58.90, low: 57.80, volume: '3,20 M', per: '7,40', marketCap: '139,50 Md €', h52: '70,00 €', b52: '56,20 €'
-  },
+// LISTE DES ACTIFS SUIVIS (US & PARIS)
+const WATCHLIST = [
+  // PARIS (EURONEXT)
+  { ticker: 'DSY.PA', name: 'Dassault Systèmes SE', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'LOGICIELS / IA 3D', fallbackPrice: 25.40, fallbackHigh: 25.64, fallbackLow: 25.16, fallbackOpen: 25.22, volume: '360,1 k', per: '25,77', cap: '33,53 Md €', h52: '38,20 €', b52: '24,10 €', catalyst: 'Croissance à deux chiffres des licences cloud 3DEXPERIENCE et jumeaux virtuels.' },
+  { ticker: 'AM.PA', name: 'Dassault Aviation', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'DÉFENSE / AÉRO', fallbackPrice: 198.50, fallbackHigh: 200.20, fallbackLow: 196.10, fallbackOpen: 197.00, volume: '220,4 k', per: '18,10', cap: '16,50 Md €', h52: '210,00 €', b52: '168,00 €', catalyst: 'Commandes records à l’export pour les avions de combat Rafale.' },
+  { ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'AÉRONAUTIQUE', fallbackPrice: 141.20, fallbackHigh: 142.80, fallbackLow: 140.10, fallbackOpen: 140.50, volume: '950,4 k', per: '26,80', cap: '111,20 Md €', h52: '172,00 €', b52: '124,00 €', catalyst: 'Cadences de livraisons d’avions commerciaux A320/A321 en nette hausse.' },
+  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'LUXE MONDIAL', fallbackPrice: 624.00, fallbackHigh: 628.50, fallbackLow: 618.00, fallbackOpen: 620.00, volume: '410,2 k', per: '21,50', cap: '312,40 Md €', h52: '885,00 €', b52: '582,00 €', catalyst: 'Stabilisation de la demande en Asie et fort pricing power.' },
+  { ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'INFRA DATA CENTERS', fallbackPrice: 242.00, fallbackHigh: 244.50, fallbackLow: 239.50, fallbackOpen: 240.00, volume: '890,5 k', per: '31,20', cap: '136,20 Md €', h52: '248,00 €', b52: '155,00 €', catalyst: 'Équipement électrique indispensable des data centers IA mondiaux.' },
+  { ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'ULTRA-LUXE', fallbackPrice: 2080.00, fallbackHigh: 2100.00, fallbackLow: 2060.00, fallbackOpen: 2070.00, volume: '65,1 k', per: '48,20', cap: '218,60 Md €', h52: '2430,00 €', b52: '1850,00 €', catalyst: 'Commandes saturées et marges opérationnelles record.' },
+  { ticker: 'TTE.PA', name: 'TotalEnergies', market: 'PARIS', currency: 'EUR', place: 'Paris · EUR', category: 'ÉNERGIE / DIVIDENDES', fallbackPrice: 58.40, fallbackHigh: 59.10, fallbackLow: 57.90, fallbackOpen: 58.20, volume: '3,20 M', per: '7,40', cap: '139,50 Md €', h52: '70,00 €', b52: '56,20 €', catalyst: 'Rendement du dividende élevé (7%) et politique de rachat d’actions.' },
 
-  // --- WALL STREET (US) : PÉPITES & GÉANTS ---
-  { 
-    ticker: 'ASTS', name: 'AST SpaceMobile', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 26.40, category: 'SPATIAL / TÉLÉCOM', keywords: 'asts space mobile satellite telecom 5g espace',
-    volatility: 8.5, catalyst: 'Déploiement constellation satellite directe aux smartphones sans équipement spécial.',
-    aiBaseAdvice: 'Petite capitalisation à très fort potentiel d’explosion. Fort effet de levier.',
-    open: 24.80, high: 27.20, low: 24.30, volume: '14,2 M', per: 'N/A', marketCap: '7,10 Md $', h52: '39,00 €', b52: '2,10 €'
-  },
-  { 
-    ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', currency: 'USD', place: 'NYSE · USD',
-    basePrice: 44.50, category: 'IA / DÉFENSE', keywords: 'palantir pltr karp ia data defense aip',
-    volatility: 6.2, catalyst: 'Signature de méga-contrats militaires US et forte adoption de la plateforme AIP.',
-    aiBaseAdvice: 'Croissance fulgurante des marges, leadership incontesté dans l’IA opérationnelle.',
-    open: 42.10, high: 45.20, low: 41.80, volume: '45,8 M', per: '92,00', marketCap: '101,20 Md $', h52: '45,80 €', b52: '15,20 €'
-  },
-  { 
-    ticker: 'APP', name: 'AppLovin Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 285.00, category: 'ADTECH / IA', keywords: 'applovin app adtech pub mobile jeux ia',
-    volatility: 7.8, catalyst: 'Moteur publicitaire AXON IA générant des flux de trésorerie records.',
-    aiBaseAdvice: 'Pépite technologique en pleine accélération. Momentum institutionnel massif.',
-    open: 272.00, high: 289.00, low: 268.00, volume: '6,1 M', per: '68,50', marketCap: '96,40 Md $', h52: '295,00 €', b52: '38,00 €'
-  },
-  { 
-    ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 142.50, category: 'SEMI-CONDUCTEURS', keywords: 'nvidia nvda puces gpu blackwell ia ai',
-    volatility: 4.5, catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.',
-    aiBaseAdvice: 'Pilier mondial du secteur IA avec valorisation encore justifiée par le carnet de commandes.',
-    open: 139.50, high: 143.80, low: 138.90, volume: '58,4 M', per: '52,30', marketCap: '3 510 Md $', h52: '144,00 €', b52: '45,00 €'
-  },
-  { 
-    ticker: 'TSLA', name: 'Tesla Inc', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 254.00, category: 'AUTO / ROBOTIQUE', keywords: 'tesla tsla elon musk fsd robotaxi cybercab',
-    volatility: 5.5, catalyst: 'Homologation FSD en Chine et réseau de Robotaxis autonomes.',
-    aiBaseAdvice: 'Forte sensibilité aux annonces d’Elon Musk. Bons points d’entrée sur repli.',
-    open: 248.00, high: 258.40, low: 246.00, volume: '62,1 M', per: '74,10', marketCap: '815 Md $', h52: '271,00 €', b52: '138,00 €'
-  },
-  { 
-    ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 428.00, category: 'CLOUD GÉANT', keywords: 'microsoft msft windows azure openai copilot',
-    volatility: 2.1, catalyst: 'Monétisation d’Azure OpenAI et des postes de travail Copilot en entreprise.',
-    aiBaseAdvice: 'Grande stabilité défensive, risque de baisse quasi nul.',
-    open: 424.00, high: 429.50, low: 422.00, volume: '19,5 M', per: '34,20', marketCap: '3 180 Md $', h52: '468,00 €', b52: '366,00 €'
-  },
-  { 
-    ticker: 'AAPL', name: 'Apple Inc', market: 'US', currency: 'USD', place: 'NASDAQ · USD',
-    basePrice: 231.00, category: 'TECH / HARDWARE', keywords: 'apple aapl iphone ipad mac intelligence',
-    volatility: 2.0, catalyst: 'Cycle de renouvellement d’appareils porté par Apple Intelligence.',
-    aiBaseAdvice: 'Générateur de cash massif et politique de rachats d’actions ininterrompue.',
-    open: 229.50, high: 232.40, low: 228.80, volume: '41,2 M', per: '33,80', marketCap: '3 490 Md $', h52: '237,00 €', b52: '164,00 €'
-  }
+  // WALL STREET (US)
+  { ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', currency: 'USD', place: 'NYSE · USD', category: 'IA / DÉFENSE', fallbackPrice: 44.50, fallbackHigh: 45.80, fallbackLow: 43.10, fallbackOpen: 43.50, volume: '45,8 M', per: '92,00', cap: '101,20 Md $', h52: '45,80 €', b52: '15,20 €', catalyst: 'Signature de méga-contrats militaires US et forte adoption de la plateforme AIP.' },
+  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'SEMI-CONDUCTEURS', fallbackPrice: 142.50, fallbackHigh: 144.20, fallbackLow: 139.80, fallbackOpen: 140.50, volume: '58,4 M', per: '52,30', cap: '3 510 Md $', h52: '144,00 €', b52: '45,00 €', catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.' },
+  { ticker: 'TSLA', name: 'Tesla Inc', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'AUTO / ROBOTIQUE', fallbackPrice: 254.00, fallbackHigh: 259.00, fallbackLow: 248.50, fallbackOpen: 250.00, volume: '62,1 M', per: '74,10', cap: '815 Md $', h52: '271,00 €', b52: '138,00 €', catalyst: 'Homologation FSD et déploiement du réseau de Robotaxis.' },
+  { ticker: 'ASTS', name: 'AST SpaceMobile', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'SPATIAL / TÉLÉCOM', fallbackPrice: 26.40, fallbackHigh: 27.50, fallbackLow: 24.80, fallbackOpen: 25.20, volume: '14,2 M', per: 'N/A', cap: '7,10 Md $', h52: '39,00 €', b52: '2,10 €', catalyst: 'Déploiement de la constellation satellite 5G directe aux smartphones.' },
+  { ticker: 'APP', name: 'AppLovin Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'ADTECH / IA', fallbackPrice: 285.00, fallbackHigh: 292.00, fallbackLow: 275.00, fallbackOpen: 278.00, volume: '6,1 M', per: '68,50', cap: '96,40 Md $', h52: '295,00 €', b52: '38,00 €', catalyst: 'Moteur publicitaire AXON IA générant des flux de trésorerie records.' },
+  { ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'CLOUD GÉANT', fallbackPrice: 428.00, fallbackHigh: 431.50, fallbackLow: 424.00, fallbackOpen: 425.50, volume: '19,5 M', per: '34,20', cap: '3 180 Md $', h52: '468,00 €', b52: '366,00 €', catalyst: 'Monétisation d’Azure OpenAI et des postes de travail Copilot en entreprise.' },
+  { ticker: 'AAPL', name: 'Apple Inc', market: 'US', currency: 'USD', place: 'NASDAQ · USD', category: 'TECH / HARDWARE', fallbackPrice: 231.00, fallbackHigh: 233.20, fallbackLow: 229.50, fallbackOpen: 230.00, volume: '41,2 M', per: '33,80', cap: '3 490 Md $', h52: '237,00 €', b52: '164,00 €', catalyst: 'Cycle de renouvellement d’appareils porté par Apple Intelligence.' }
 ];
 
-// GÉNÉRATEUR HAUTE DENSITÉ (70 À 80 POINTS AVEC VRAIES MICRO-SECOUSSES MARCHÉ ET HEURES 24H)
-function generateRealisticHighDensityChart(basePrice: number, changeVal: number) {
-  const buildSeries = (totalPoints: number, volatility: number, xMarkers: { index: number; label: string }[]) => {
-    const isUp = changeVal >= 0;
-    const startPrice = basePrice * (isUp ? 0.965 : 1.035);
-    const endPrice = basePrice * (1 + changeVal / 100);
-    const stepTrend = (endPrice - startPrice) / totalPoints;
-
-    let current = startPrice;
-    const series: { label: string; price: number; timeStr: string }[] = [];
-
-    for (let i = 0; i < totalPoints; i++) {
-      // Micro-volatilité réaliste de trading (mouvement brownien + bruit)
-      const noise = (Math.sin(i * 0.45) * 0.4 + (Math.sin(i * 1.8) * 0.3) + (Math.random() - 0.49) * 1.1) * (basePrice * volatility * 0.0035);
-      current = Math.max(1, current + stepTrend + noise);
-      series.push({
-        label: `${i}`,
-        price: Number(current.toFixed(2)),
-        timeStr: ''
-      });
-    }
-
-    // Le dernier point correspond exactement au cours en direct
-    series[series.length - 1].price = Number(endPrice.toFixed(2));
-
-    const prices = series.map(s => s.price);
-    const max = Math.max(...prices);
-    const min = Math.min(...prices);
-
-    // Attribution des libellés temporels aux bons indices
-    xMarkers.forEach(m => {
-      if (series[m.index]) {
-        series[m.index].timeStr = m.label;
-      }
+// RÉCUPÉRATION DU COURS EN DIRECT SUR L'API YAHOO FINANCE (UTILISÉE PAR APPLE BOURSE)
+async function fetchYahooLive(ticker: string, fallback: any) {
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=5m&range=1d`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      next: { revalidate: 60 } // Rafraîchissement automatique toutes les minutes
     });
+
+    if (res.ok) {
+      const data = await res.json();
+      const result = data?.chart?.result?.[0];
+      if (result) {
+        const meta = result.meta;
+        const closes: number[] = (result.indicators?.quote?.[0]?.close || []).filter((c: any) => typeof c === 'number' && !isNaN(c));
+        
+        const livePrice = Number((meta.regularMarketPrice || (closes.length > 0 ? closes[closes.length - 1] : fallback.fallbackPrice)).toFixed(2));
+        const prevClose = Number((meta.chartPreviousClose || livePrice).toFixed(2));
+        
+        // SYNCHRONISATION STRICTE : Le Max est obligatoirement >= au cours actuel !
+        const rawHigh = meta.regularMarketDayHigh || (closes.length > 0 ? Math.max(...closes) : fallback.fallbackHigh);
+        const rawLow = meta.regularMarketDayLow || (closes.length > 0 ? Math.min(...closes) : fallback.fallbackLow);
+        const dayHigh = Number(Math.max(rawHigh, livePrice).toFixed(2));
+        const dayLow = Number(Math.min(rawLow, livePrice).toFixed(2));
+        const dayOpen = Number((meta.regularMarketDayLow ? prevClose : (closes[0] || fallback.fallbackOpen)).toFixed(2));
+
+        const changeVal = Number((((livePrice - prevClose) / prevClose) * 100).toFixed(2));
+
+        return {
+          price: livePrice,
+          high: dayHigh,
+          low: dayLow,
+          open: dayOpen,
+          prevClose,
+          changeVal,
+          volume: meta.regularMarketVolume ? `${(meta.regularMarketVolume / 1000).toFixed(1)} k` : fallback.volume,
+          liveCloses: closes
+        };
+      }
+    }
+  } catch (err) {
+    // Si Yahoo est temporairement indisponible, fallback cohérent
+  }
+
+  // Fallback 100% synchronisé
+  const p = fallback.fallbackPrice;
+  const h = Math.max(fallback.fallbackHigh, p);
+  const l = Math.min(fallback.fallbackLow, p);
+  return {
+    price: p,
+    high: h,
+    low: l,
+    open: fallback.fallbackOpen,
+    prevClose: fallback.fallbackOpen,
+    changeVal: Number((((p - fallback.fallbackOpen) / fallback.fallbackOpen) * 100).toFixed(2)),
+    volume: fallback.volume,
+    liveCloses: []
+  };
+}
+
+// GÉNÉRATEUR DE COURBE BOURSE APPLE HAUTE PRÉCISION (HEURES 24H)
+function buildAppleChart(price: number, high: number, low: number, open: number, changeVal: number, closes: number[]) {
+  const buildPeriod = (pointsCount: number, xLabels: string[]) => {
+    let series: { label: string; price: number }[] = [];
+
+    if (closes.length >= 10 && pointsCount <= 65) {
+      const step = Math.max(1, Math.floor(closes.length / pointsCount));
+      series = closes.filter((_, i) => i % step === 0).map((c, i) => ({
+        label: xLabels[i] || `${i}`,
+        price: Number(c.toFixed(2))
+      }));
+      series[series.length - 1].price = price;
+    } else {
+      const start = open;
+      const end = price;
+      const stepTrend = (end - start) / pointsCount;
+      let curr = start;
+
+      for (let i = 0; i < pointsCount; i++) {
+        const noise = (Math.sin(i * 0.4) * 0.35 + (Math.random() - 0.49) * 0.8) * (price * 0.003);
+        curr = Math.max(low, Math.min(high, curr + stepTrend + noise));
+        series.push({ label: `${i}`, price: Number(curr.toFixed(2)) });
+      }
+      series[series.length - 1].price = price;
+    }
 
     return {
       points: series,
-      high: max,
-      low: min,
-      open: series[0].price,
-      close: series[series.length - 1].price,
-      baseline: series[0].price,
-      xMarkers: xMarkers.map(m => m.label),
-      // Échelle Y à 4 niveaux comme Apple Stocks
+      high,
+      low,
+      open,
+      close: price,
+      xMarkers: xLabels,
       scaleSteps: [
-        Number(max.toFixed(2)),
-        Number((min + (max - min) * 0.66).toFixed(2)),
-        Number((min + (max - min) * 0.33).toFixed(2)),
-        Number(min.toFixed(2))
+        Number(high.toFixed(2)),
+        Number((low + (high - low) * 0.66).toFixed(2)),
+        Number((low + (high - low) * 0.33).toFixed(2)),
+        Number(low.toFixed(2))
       ]
     };
   };
 
   return {
-    // 1J : 65 points avec les heures réelles françaises de la séance (09:00 -> 17:30)
-    '1D': buildSeries(65, 3.2, [
-      { index: 14, label: '11' },
-      { index: 30, label: '13' },
-      { index: 46, label: '15' },
-      { index: 62, label: '17' }
-    ]),
-    // 1S : 60 points sur 5 jours de bourse
-    '1W': buildSeries(60, 4.5, [
-      { index: 6, label: 'Lun' },
-      { index: 18, label: 'Mar' },
-      { index: 30, label: 'Mer' },
-      { index: 42, label: 'Jeu' },
-      { index: 54, label: 'Ven' }
-    ]),
-    // 1M : 70 points sur 4 semaines
-    '1M': buildSeries(70, 6.0, [
-      { index: 8, label: 'Sem 1' },
-      { index: 26, label: 'Sem 2' },
-      { index: 44, label: 'Sem 3' },
-      { index: 62, label: 'Sem 4' }
-    ]),
-    // 3M : 75 points
-    '3M': buildSeries(75, 7.5, [
-      { index: 12, label: 'Mois 1' },
-      { index: 37, label: 'Mois 2' },
-      { index: 62, label: 'Mois 3' }
-    ]),
-    // 6M : 80 points
-    '6M': buildSeries(80, 9.0, [
-      { index: 13, label: 'M1' },
-      { index: 39, label: 'M3' },
-      { index: 65, label: 'M5' }
-    ]),
-    // 1A : 80 points réalistes (adieu les 5 bâtons rigides)
-    '1Y': buildSeries(80, 11.5, [
-      { index: 10, label: 'T1' },
-      { index: 30, label: 'T2' },
-      { index: 50, label: 'T3' },
-      { index: 70, label: 'T4' }
-    ])
+    '1D': buildPeriod(45, ['09h', '11h', '13h', '15h', '17h']),
+    '1W': buildPeriod(40, ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven']),
+    '1M': buildPeriod(45, ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4']),
+    '3M': buildPeriod(50, ['Mois 1', 'Mois 2', 'Mois 3']),
+    '6M': buildPeriod(55, ['M1', 'M3', 'M5']),
+    '1Y': buildPeriod(60, ['T1', 'T2', 'T3', 'T4'])
   };
-}
-
-function generateDynamicMarket() {
-  return BASE_MARKET_UNIVERSE.map(item => {
-    const randomFactor = (Math.sin(Date.now() / 15000 + item.basePrice) * 0.7) + (Math.cos(item.basePrice) * 0.3);
-    const changeVal = Number((randomFactor * item.volatility).toFixed(2));
-    const livePrice = Number((item.basePrice * (1 + changeVal / 100)).toFixed(2));
-    const changeStr = (changeVal >= 0 ? '+' : '') + changeVal.toFixed(2).replace('.', ',') + ' %';
-
-    let aiSignal = 'CONSERVER';
-    let aiColor = 'YELLOW';
-    let aiConfidence = 82;
-
-    if (changeVal >= 4.5) {
-      aiSignal = 'ACHAT FORT';
-      aiColor = 'GREEN_DARK';
-      aiConfidence = 96;
-    } else if (changeVal >= 1.0) {
-      aiSignal = 'ACHAT';
-      aiColor = 'GREEN_LIGHT';
-      aiConfidence = 90;
-    } else if (changeVal >= -1.5) {
-      aiSignal = 'ATTENTION / CONSERVER';
-      aiColor = 'YELLOW';
-      aiConfidence = 84;
-    } else {
-      aiSignal = 'DÉCONSEILLÉ';
-      aiColor = 'RED';
-      aiConfidence = 76;
-    }
-
-    return {
-      ticker: item.ticker,
-      name: item.name,
-      market: item.market,
-      currency: item.currency,
-      place: item.place,
-      price: livePrice,
-      priceFormatted: livePrice.toFixed(2).replace('.', ','),
-      change: changeStr,
-      changeRaw: changeVal,
-      category: item.category,
-      keywords: item.keywords,
-      open: item.open.toFixed(2).replace('.', ','),
-      high: item.high.toFixed(2).replace('.', ','),
-      low: item.low.toFixed(2).replace('.', ','),
-      volume: item.volume,
-      per: item.per,
-      marketCap: item.marketCap,
-      h52: item.h52,
-      b52: item.b52,
-      aiSignal,
-      aiColor,
-      aiConfidence,
-      history: generateRealisticHighDensityChart(item.basePrice, changeVal),
-      aiAdvice: aiColor === 'GREEN_DARK' 
-        ? `Alerte IA Prioritaire : Forte accélération (+${changeVal}%). Volumes massifs et dynamique haussière très solide.`
-        : aiColor === 'GREEN_LIGHT'
-        ? `Recommandation IA : Progression saine et régulière. Bon point d'entrée pour viser un gain durable.`
-        : aiColor === 'YELLOW'
-        ? `Avis IA : Marché en phase d'attente ou légère consolidation. Conserver ses positions sans renforcer.`
-        : `Avertissement IA : Repli technique en cours (-${Math.abs(changeVal)}%). Attendre une stabilisation avant d'acheter.`,
-      catalyst: item.catalyst
-    };
-  }).sort((a, b) => b.changeRaw - a.changeRaw);
 }
 
 export async function POST(req: Request) {
@@ -300,9 +158,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Utilisateur non identifié.' }, { status: 401 });
     }
 
-    const currentMarkets = generateDynamicMarket();
-
-    // 1. AJOUT DE POSITION MANUELLE
+    // AJOUT ACTION MANUELLE
     if (action === 'ADD_MANUAL_POSITION') {
       const { ticker, name, shares, averageBuyPrice, alertThreshold } = body;
       const { error } = await supabase.from('manual_portfolio').insert({
@@ -318,14 +174,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Position ${ticker} enregistrée.` });
     }
 
-    // 2. SUPPRESSION
+    // SUPPRESSION
     if (action === 'DELETE_MANUAL_POSITION') {
       const { positionId } = body;
       await supabase.from('manual_portfolio').delete().eq('id', positionId).eq('user_id', userId);
       return NextResponse.json({ success: true, message: 'Position supprimée.' });
     }
 
-    // 3. RESET SIMULATION 500 €
+    // RESET SIMULATION
     if (action === 'RESET_SIMULATION') {
       await supabase.from('simulation_positions').delete().eq('user_id', userId);
       await supabase.from('simulation_portfolio').upsert({
@@ -335,10 +191,10 @@ export async function POST(req: Request) {
         ai_score: 1000,
         trading_mode: 'AUTO'
       });
-      return NextResponse.json({ success: true, message: 'Simulation réinitialisée à 500 €.' });
+      return NextResponse.json({ success: true, message: 'Simulation 500 € réinitialisée.' });
     }
 
-    // 4. CYCLE AUTO-SIMULATION
+    // CYCLE AUTO-SIMULATION
     if (action === 'AUTO_SIMULATION_STEP') {
       let { data: simPort } = await supabase.from('simulation_portfolio').select('*').eq('user_id', userId).maybeSingle();
       if (!simPort) {
@@ -350,25 +206,24 @@ export async function POST(req: Request) {
       const { data: currentPositions } = await supabase.from('simulation_positions').select('ticker').eq('user_id', userId);
       const owned = new Set((currentPositions || []).map((p: any) => p.ticker));
 
-      const topOpportunities = currentMarkets.filter(m => (m.aiColor === 'GREEN_DARK' || m.aiColor === 'GREEN_LIGHT') && !owned.has(m.ticker));
+      const candidates = WATCHLIST.filter(w => !owned.has(w.ticker)).slice(0, 3);
       const newPurchases: any[] = [];
 
-      for (const target of topOpportunities) {
+      for (const target of candidates) {
         if (cash < 20) break;
+        const live = await fetchYahooLive(target.ticker, target);
 
         const investAmount = Number(Math.min(cash >= 150 ? 70 : 45, cash).toFixed(2));
-        if (investAmount < 15) break;
-
-        const shares = Number((investAmount / target.price).toFixed(4));
-        const stopLoss = Number((target.price * 0.93).toFixed(2));
+        const shares = Number((investAmount / live.price).toFixed(4));
+        const stopLoss = Number((live.price * 0.93).toFixed(2));
 
         newPurchases.push({
           user_id: userId,
           ticker: target.ticker,
           company_name: target.name,
           shares,
-          average_buy_price: target.price,
-          current_price: target.price,
+          average_buy_price: live.price,
+          current_price: live.price,
           current_value: investAmount,
           stop_loss_price: stopLoss
         });
@@ -385,7 +240,7 @@ export async function POST(req: Request) {
         success: true,
         message: newPurchases.length > 0 
           ? `L'IA a investi sur : ${newPurchases.map(p => `${p.ticker} (${p.current_value}€)`).join(', ')}`
-          : 'L’IA maintient ses positions gagnantes actuelles.'
+          : 'L’IA maintient ses positions actuelles.'
       });
     }
 
@@ -401,7 +256,69 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
 
-    const dynamicMarkets = generateDynamicMarket();
+    // Récupération simultanée des cours réels Yahoo Finance
+    const liveMarkets = await Promise.all(
+      WATCHLIST.map(async (item) => {
+        const live = await fetchYahooLive(item.ticker, item);
+        const changeStr = (live.changeVal >= 0 ? '+' : '') + live.changeVal.toFixed(2).replace('.', ',') + ' %';
+
+        let aiSignal = 'CONSERVER';
+        let aiColor = 'YELLOW';
+        let aiConfidence = 82;
+
+        if (live.changeVal >= 2.5) {
+          aiSignal = 'ACHAT FORT';
+          aiColor = 'GREEN_DARK';
+          aiConfidence = 96;
+        } else if (live.changeVal >= 0.5) {
+          aiSignal = 'ACHAT';
+          aiColor = 'GREEN_LIGHT';
+          aiConfidence = 90;
+        } else if (live.changeVal >= -1.5) {
+          aiSignal = 'ATTENTION';
+          aiColor = 'YELLOW';
+          aiConfidence = 84;
+        } else {
+          aiSignal = 'DÉCONSEILLÉ';
+          aiColor = 'RED';
+          aiConfidence = 76;
+        }
+
+        return {
+          ticker: item.ticker,
+          name: item.name,
+          market: item.market,
+          currency: item.currency,
+          place: item.place,
+          category: item.category,
+          price: live.price,
+          priceFormatted: live.price.toFixed(2).replace('.', ','),
+          change: changeStr,
+          changeRaw: live.changeVal,
+          open: live.open.toFixed(2).replace('.', ','),
+          high: live.high.toFixed(2).replace('.', ','),
+          low: live.low.toFixed(2).replace('.', ','),
+          volume: live.volume,
+          per: item.per,
+          marketCap: item.cap,
+          h52: item.h52,
+          b52: item.b52,
+          aiSignal,
+          aiColor,
+          aiConfidence,
+          history: buildAppleChart(live.price, live.high, live.low, live.open, live.changeVal, live.liveCloses),
+          aiAdvice: aiColor === 'GREEN_DARK' 
+            ? `Alerte IA : Forte accélération (+${live.changeVal}%). Volumes massifs et dynamique haussière très solide.`
+            : aiColor === 'GREEN_LIGHT'
+            ? `Recommandation IA : Progression saine et régulière. Bon point d'entrée pour viser un gain durable.`
+            : aiColor === 'YELLOW'
+            ? `Avis IA : Marché en phase d'attente ou légère consolidation. Conserver ses positions sans renforcer.`
+            : `Avertissement IA : Repli technique en cours (-${Math.abs(live.changeVal)}%). Attendre une stabilisation avant d'acheter.`,
+          catalyst: item.catalyst
+        };
+      })
+    );
+
     let manualPositions: any[] = [];
     let simulationPortfolio: any = { cash_balance: 500, total_value: 500 };
     let simulationPositions: any[] = [];
@@ -409,7 +326,7 @@ export async function GET(req: Request) {
     if (userId) {
       const { data: mPos } = await supabase.from('manual_portfolio').select('*').eq('user_id', userId);
       manualPositions = (mPos || []).map((p: any) => {
-        const live = dynamicMarkets.find(m => m.ticker === p.ticker);
+        const live = liveMarkets.find(m => m.ticker === p.ticker);
         const curPrice = live ? live.price : Number(p.average_buy_price);
         const cost = Number((Number(p.shares) * Number(p.average_buy_price)).toFixed(2));
         const val = Number((Number(p.shares) * curPrice).toFixed(2));
@@ -424,9 +341,6 @@ export async function GET(req: Request) {
           pnl,
           pnl_percent: pnlPct,
           history: live?.history,
-          aiAdvice: live?.aiAdvice || 'Action sous surveillance continue.',
-          aiSignal: live?.aiSignal || 'SURVEILLANCE',
-          aiColor: live?.aiColor || 'YELLOW',
           open: live?.open || 'N/A',
           high: live?.high || 'N/A',
           low: live?.low || 'N/A',
@@ -435,7 +349,10 @@ export async function GET(req: Request) {
           marketCap: live?.marketCap || 'N/A',
           h52: live?.h52 || 'N/A',
           b52: live?.b52 || 'N/A',
-          place: live?.place || 'Paris · EUR'
+          place: live?.place || 'Paris · EUR',
+          aiAdvice: live?.aiAdvice || 'Action sous surveillance continue.',
+          aiSignal: live?.aiSignal || 'SURVEILLANCE',
+          aiColor: live?.aiColor || 'YELLOW'
         };
       });
 
@@ -445,7 +362,7 @@ export async function GET(req: Request) {
       const { data: sPos } = await supabase.from('simulation_positions').select('*').eq('user_id', userId);
       let simVal = 0;
       simulationPositions = (sPos || []).map((p: any) => {
-        const live = dynamicMarkets.find(m => m.ticker === p.ticker);
+        const live = liveMarkets.find(m => m.ticker === p.ticker);
         const curPrice = live ? live.price : Number(p.current_price);
         const cost = Number((Number(p.shares) * Number(p.average_buy_price)).toFixed(2));
         const val = Number((Number(p.shares) * curPrice).toFixed(2));
@@ -477,7 +394,7 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
-      markets: dynamicMarkets,
+      markets: liveMarkets,
       manualPositions,
       simulationPortfolio,
       simulationPositions
