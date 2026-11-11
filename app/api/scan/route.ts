@@ -14,7 +14,7 @@ function getSupabase() {
   return createClient(rawUrl, rawKey);
 }
 
-// UNIVERS BOURSIER AVEC MÉTRIQUES COMPLÈTES CONFORMES À L'APPLICATION BOURSE D'APPLE
+// BASSIN BOURSIER COMPLET CALIBRÉ STYLE BOURSE APPLE
 const BASE_MARKET_UNIVERSE = [
   // --- BOURSE DE PARIS (EURONEXT) ---
   { 
@@ -126,27 +126,51 @@ const BASE_MARKET_UNIVERSE = [
   }
 ];
 
-// Générateur haute fidélité pour les séries 1J, 1S, 1M, 3M, 6M, 1A
-function generateChartPoints(basePrice: number, changeVal: number) {
-  const build = (count: number, volatility: number, timeLabels: string[]) => {
-    let p = basePrice * (changeVal >= 0 ? 0.96 : 1.03);
-    const data: { label: string; price: number }[] = [];
-    for (let i = 0; i < count; i++) {
-      const step = (Math.sin(i * 1.5) + (Math.random() - 0.48)) * volatility;
-      p = Math.max(1, p + step);
-      data.push({ label: timeLabels[i] || `${i}`, price: Number(p.toFixed(2)) });
+// GÉNÉRATEUR HAUTE DENSITÉ (70 À 80 POINTS AVEC VRAIES MICRO-SECOUSSES MARCHÉ ET HEURES 24H)
+function generateRealisticHighDensityChart(basePrice: number, changeVal: number) {
+  const buildSeries = (totalPoints: number, volatility: number, xMarkers: { index: number; label: string }[]) => {
+    const isUp = changeVal >= 0;
+    const startPrice = basePrice * (isUp ? 0.965 : 1.035);
+    const endPrice = basePrice * (1 + changeVal / 100);
+    const stepTrend = (endPrice - startPrice) / totalPoints;
+
+    let current = startPrice;
+    const series: { label: string; price: number; timeStr: string }[] = [];
+
+    for (let i = 0; i < totalPoints; i++) {
+      // Micro-volatilité réaliste de trading (mouvement brownien + bruit)
+      const noise = (Math.sin(i * 0.45) * 0.4 + (Math.sin(i * 1.8) * 0.3) + (Math.random() - 0.49) * 1.1) * (basePrice * volatility * 0.0035);
+      current = Math.max(1, current + stepTrend + noise);
+      series.push({
+        label: `${i}`,
+        price: Number(current.toFixed(2)),
+        timeStr: ''
+      });
     }
-    data[data.length - 1].price = Number((basePrice * (1 + changeVal / 100)).toFixed(2));
-    const prices = data.map(d => d.price);
+
+    // Le dernier point correspond exactement au cours en direct
+    series[series.length - 1].price = Number(endPrice.toFixed(2));
+
+    const prices = series.map(s => s.price);
     const max = Math.max(...prices);
     const min = Math.min(...prices);
+
+    // Attribution des libellés temporels aux bons indices
+    xMarkers.forEach(m => {
+      if (series[m.index]) {
+        series[m.index].timeStr = m.label;
+      }
+    });
+
     return {
-      points: data,
+      points: series,
       high: max,
       low: min,
-      open: data[0].price,
-      close: data[data.length - 1].price,
-      // 4 repères précis Y-axis comme Apple Stocks
+      open: series[0].price,
+      close: series[series.length - 1].price,
+      baseline: series[0].price,
+      xMarkers: xMarkers.map(m => m.label),
+      // Échelle Y à 4 niveaux comme Apple Stocks
       scaleSteps: [
         Number(max.toFixed(2)),
         Number((min + (max - min) * 0.66).toFixed(2)),
@@ -156,20 +180,48 @@ function generateChartPoints(basePrice: number, changeVal: number) {
     };
   };
 
-  const dayLabels = ['09:00', '11:00', '13:00', '15:00', '17:00', '17:30'];
-  const weekLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'];
-  const monthLabels = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'];
-  const threeMonthLabels = ['Mois 1', 'Mois 2', 'Mois 3'];
-  const sixMonthLabels = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'];
-  const yearLabels = ['T1', 'T2', 'T3', 'T4', 'Actuel'];
-
   return {
-    '1D': build(6, basePrice * 0.008, dayLabels),
-    '1W': build(5, basePrice * 0.015, weekLabels),
-    '1M': build(4, basePrice * 0.025, monthLabels),
-    '3M': build(3, basePrice * 0.038, threeMonthLabels),
-    '6M': build(6, basePrice * 0.055, sixMonthLabels),
-    '1Y': build(5, basePrice * 0.075, yearLabels)
+    // 1J : 65 points avec les heures réelles françaises de la séance (09:00 -> 17:30)
+    '1D': buildSeries(65, 3.2, [
+      { index: 14, label: '11' },
+      { index: 30, label: '13' },
+      { index: 46, label: '15' },
+      { index: 62, label: '17' }
+    ]),
+    // 1S : 60 points sur 5 jours de bourse
+    '1W': buildSeries(60, 4.5, [
+      { index: 6, label: 'Lun' },
+      { index: 18, label: 'Mar' },
+      { index: 30, label: 'Mer' },
+      { index: 42, label: 'Jeu' },
+      { index: 54, label: 'Ven' }
+    ]),
+    // 1M : 70 points sur 4 semaines
+    '1M': buildSeries(70, 6.0, [
+      { index: 8, label: 'Sem 1' },
+      { index: 26, label: 'Sem 2' },
+      { index: 44, label: 'Sem 3' },
+      { index: 62, label: 'Sem 4' }
+    ]),
+    // 3M : 75 points
+    '3M': buildSeries(75, 7.5, [
+      { index: 12, label: 'Mois 1' },
+      { index: 37, label: 'Mois 2' },
+      { index: 62, label: 'Mois 3' }
+    ]),
+    // 6M : 80 points
+    '6M': buildSeries(80, 9.0, [
+      { index: 13, label: 'M1' },
+      { index: 39, label: 'M3' },
+      { index: 65, label: 'M5' }
+    ]),
+    // 1A : 80 points réalistes (adieu les 5 bâtons rigides)
+    '1Y': buildSeries(80, 11.5, [
+      { index: 10, label: 'T1' },
+      { index: 30, label: 'T2' },
+      { index: 50, label: 'T3' },
+      { index: 70, label: 'T4' }
+    ])
   };
 }
 
@@ -225,7 +277,7 @@ function generateDynamicMarket() {
       aiSignal,
       aiColor,
       aiConfidence,
-      history: generateChartPoints(item.basePrice, changeVal),
+      history: generateRealisticHighDensityChart(item.basePrice, changeVal),
       aiAdvice: aiColor === 'GREEN_DARK' 
         ? `Alerte IA Prioritaire : Forte accélération (+${changeVal}%). Volumes massifs et dynamique haussière très solide.`
         : aiColor === 'GREEN_LIGHT'
