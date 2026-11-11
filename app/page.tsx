@@ -23,14 +23,14 @@ function getBrowserSupabase() {
 const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
-  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction négociée au moment où la bourse a ouvert ce matin.' },
-  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint par l’action aujourd’hui. Le cours actuel ne peut jamais le dépasser.' },
-  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré pour cette action aujourd’hui.' },
+  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.' },
+  'Max.': { title: 'Plus Haut du Jour', desc: 'Prix le plus élevé payé aujourd’hui. Le cours actuel ne peut jamais être supérieur à cette valeur.' },
+  'Min.': { title: 'Plus Bas du Jour', desc: 'Prix le plus bas payé aujourd’hui pour cette action.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
   'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse (nombre d’actions × prix actuel).' },
   'H 52 sem.': { title: 'Plus Haut 52 Semaines', desc: 'Le record absolu de prix atteint par cette action sur les 12 derniers mois.' },
-  'B 52 sem.': { title: 'Plus Bas 52 Semaines', desc: 'Le point le plus bas touché par cette action sur les 12 derniers mois.' }
+  'B 52 sem.': { title: 'Plus Bas 52 Semaines', desc: 'Le plancher de prix touché par cette action sur les 12 derniers mois.' }
 };
 
 export default function App() {
@@ -38,6 +38,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'MARKETS' | 'AUTO_SIM' | 'MY_PORTFOLIO'>('MARKETS');
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshingLive, setRefreshingLive] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
   // Données
@@ -46,7 +47,7 @@ export default function App() {
   const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
   const [simPositions, setSimPositions] = useState<any[]>([]);
 
-  // Accordéon des actions : mémorise quelles actions sont déroulées en grand
+  // Accordéon des actions
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   // Filtres
@@ -62,12 +63,13 @@ export default function App() {
 
   // Modal Graphique
   const [chartStock, setChartStock] = useState<any>(null);
-  const [chartPeriod, setChartPeriod] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | '1Y'>('1D');
+  const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1H');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
-  // Timer
-  const [countdown, setCountdown] = useState(60); // Scan toutes les 60 secondes (1 minute)
+  // Timers séparés clairs
+  const [lastMarketTime, setLastMarketTime] = useState<string>('16h23');
+  const [aiCountdown, setAiCountdown] = useState(300); // 5 min pour l'IA
 
   // Auth
   const [authEmail, setAuthEmail] = useState('');
@@ -88,13 +90,13 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Décompte 60 secondes pour rafraîchissement en direct à 1 minute près
+  // Décompte de l'analyse IA
   useEffect(() => {
     const timer = setInterval(() => {
-      setCountdown((prev) => {
+      setAiCountdown((prev) => {
         if (prev <= 1) {
           fetchData();
-          return 60;
+          return 300;
         }
         return prev - 1;
       });
@@ -108,18 +110,31 @@ export default function App() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const fetchData = async (userId?: string) => {
+  const fetchData = async (userId?: string, forceFresh = false) => {
     try {
       const uId = userId || user?.id;
-      const res = await fetch(`/api/scan${uId ? `?userId=${uId}` : ''}`);
+      const res = await fetch(`/api/scan?${uId ? `userId=${uId}&` : ''}${forceFresh ? 'fresh=true' : ''}`);
       const data = await res.json();
       if (data.markets) setMarkets(data.markets);
       if (data.manualPositions) setManualPositions(data.manualPositions);
       if (data.simulationPortfolio) setSimPortfolio(data.simulationPortfolio);
       if (data.simulationPositions) setSimPositions(data.simulationPositions);
+      if (data.serverTime) setLastMarketTime(data.serverTime);
+
+      // Met à jour la modale si elle est ouverte
+      if (chartStock) {
+        const updated = (data.markets || []).find((m: any) => m.ticker === chartStock.ticker);
+        if (updated) setChartStock(updated);
+      }
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleManualRefresh = async () => {
+    setRefreshingLive(true);
+    await fetchData(user?.id, true);
+    setRefreshingLive(false);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -146,7 +161,6 @@ export default function App() {
     }
   };
 
-  // Bascule d'ouverture/fermeture accordéon
   const toggleCardExpand = (ticker: string) => {
     setExpandedCards(prev => ({
       ...prev,
@@ -230,7 +244,7 @@ export default function App() {
     if (!rawQuery.trim()) return true;
     const clean = (s: string) => (s || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
     const q = clean(rawQuery);
-    const corpus = clean(`${item.ticker} ${item.name} ${item.category} ${item.keywords || ''}`);
+    const corpus = clean(`${item.ticker} ${item.name} ${item.category}`);
     if (corpus.includes(q)) return true;
     return q.split(/\s+/).some(w => w.length > 2 && corpus.includes(w));
   };
@@ -242,7 +256,6 @@ export default function App() {
 
   const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
 
-  // Style des badges par code couleur strict
   const getBadgeStyle = (colorType: string) => {
     switch (colorType) {
       case 'GREEN_DARK':
@@ -257,7 +270,7 @@ export default function App() {
     }
   };
 
-  // GRAPHIQUE APPLE BOURSE QUADRILLÉ
+  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC QUADRILLAGE RÉEL
   const renderAppleStocksChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
@@ -274,7 +287,6 @@ export default function App() {
     }).join(' ');
 
     const strokeColor = isUp ? '#34c759' : '#ff3b30';
-    const fillColor = isUp ? 'rgba(52, 199, 89, 0.16)' : 'rgba(255, 59, 48, 0.16)';
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: number[] = chartData.scaleSteps || [max, min];
 
@@ -283,26 +295,25 @@ export default function App() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {/* LIGNES DU QUADRILLAGE HORIZONTALES */}
+            {/* LIGNES DU QUADRILLAGE */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
-            {/* LIGNES VERTICALES QUADRILLAGE */}
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
 
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
-                <linearGradient id="appleGradient" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="appleGradientLive" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={strokeColor} stopOpacity="0.32" />
                   <stop offset="85%" stopColor={strokeColor} stopOpacity="0.04" />
                   <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <polygon points={polygon} fill="url(#appleGradient)" />
+              <polygon points={polygon} fill="url(#appleGradientLive)" />
               <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
@@ -316,7 +327,7 @@ export default function App() {
 
         </div>
 
-        {/* AXE X TEMPOREL (24h) */}
+        {/* AXE X TEMPOREL DYNAMIQUE */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -393,8 +404,8 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000000', color: '#f5f5f7', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
-      {/* HEADER iOS */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
+      {/* HEADER AVEC LES 2 COMPTEURS SÉPARÉS */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -407,19 +418,30 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          {/* Actualisation en direct à 1 minute près */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem' }}>
-            <Clock size={12} color="#2997ff" />
-            <span style={{ color: '#8e8e93' }}>1 min :</span>
-            <strong style={{ color: '#fff' }}>{formatTimer(countdown)}</strong>
+        {/* 2 COMPTEURS DISTINCTS : BOURSE ET IA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* COMPTEUR 1 : BOURSE DIRECT */}
+          <div 
+            onClick={handleManualRefresh}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem', cursor: 'pointer' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#34c759' }} />
+            <span style={{ color: '#8e8e93' }}>Bourse :</span>
+            <strong style={{ color: '#fff' }}>{lastMarketTime}</strong>
+            <RefreshCw size={10} color="#2997ff" className={refreshingLive ? 'animate-spin' : ''} />
+          </div>
+
+          {/* COMPTEUR 2 : IA SCAN */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem' }}>
+            <Clock size={10} color="#ff9f0a" />
+            <span style={{ color: '#8e8e93' }}>IA :</span>
+            <strong style={{ color: '#fff' }}>{formatTimer(aiCountdown)}</strong>
           </div>
 
           <button
             onClick={() => supabase.auth.signOut()}
             title="Déconnexion"
-            style={{ background: 'none', border: 'none', color: '#ff453a', cursor: 'pointer' }}>
-            <LogOut size={17} />
+            style={{ background: 'none', border: 'none', color: '#ff453a', cursor: 'pointer', padding: '0.2rem' }}>
+            <LogOut size={16} />
           </button>
         </div>
       </header>
@@ -456,17 +478,29 @@ export default function App() {
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : ANALYSE DU MARCHÉ (FORMAT COMPACT EN ACCORDÉON) */}
+        {/* ONGLET 1 : ANALYSE DU MARCHÉ (ACCORDÉON COMPACT) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-                <Flame size={20} color="#ff9f0a" />
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Marchés en Direct</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Flame size={20} color="#ff9f0a" />
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Marchés en Direct</h2>
+                </div>
+
+                {/* BOUTON ACTUALISER MANUEL DU MARCHÉ */}
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={refreshingLive}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', border: 'none', color: '#2997ff', padding: '0.35rem 0.65rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                  <RefreshCw size={12} className={refreshingLive ? 'animate-spin' : ''} />
+                  <span>Actualiser</span>
+                </button>
               </div>
+
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
-                Données réelles Yahoo Finance synchronisées à la minute près.
+                Données Yahoo Finance à la seconde près.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -493,16 +527,17 @@ export default function App() {
                 type="text"
                 value={marketSearchQuery}
                 onChange={e => setMarketSearchQuery(e.target.value)}
-                placeholder="Rechercher (DSY.PA, Dassault, Nvidia, Airbus...)"
+                placeholder="Rechercher (DSY.PA, MSFT, Nvidia...)"
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            {/* LISTE DENSE ET COMPACTE (FORMAT ACCORDÉON) */}
+            {/* LISTE EN ACCORDÉON COMPACT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
                 const isExpanded = !!expandedCards[m.ticker];
+                const cur = m.currency || '€';
 
                 return (
                   <div
@@ -516,7 +551,7 @@ export default function App() {
                       boxSizing: 'border-box'
                     }}>
                     
-                    {/* LIGNE PRINCIPALE COMPACTE (TOUJOURS VISIBLE) */}
+                    {/* LIGNE PRINCIPALE COMPACTE */}
                     <div
                       style={{
                         padding: '0.75rem 0.9rem',
@@ -526,7 +561,6 @@ export default function App() {
                         cursor: 'pointer'
                       }}>
                       
-                      {/* IDENTIFIANT & NOM */}
                       <div
                         onClick={() => setChartStock(m)}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
@@ -541,17 +575,17 @@ export default function App() {
                         </span>
                       </div>
 
-                      {/* COURS EN DIRECT & VARIATION */}
+                      {/* COURS EN DIRECT AVEC LA BONNE DEVISE */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{m.priceFormatted} €</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{m.priceFormatted} {cur}</div>
                         <div style={{ fontSize: '0.78rem', color: m.changeRaw >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
                           {m.change}
                         </div>
                       </div>
 
-                      {/* PASTILLE RECOMMANDATION IA */}
+                      {/* BADGE RECOMMANDATION */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{
@@ -563,7 +597,7 @@ export default function App() {
                         {badge.label}
                       </div>
 
-                      {/* PETITE FLÈCHE VERS LE BAS / HAUT POUR DÉROULER EN GRAND */}
+                      {/* FLÈCHE ACCORDÉON */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -580,7 +614,7 @@ export default function App() {
 
                     </div>
 
-                    {/* FENÊTRE DÉROULÉE EN GRAND (ACCORDÉON) */}
+                    {/* DÉPLIÉ EN GRAND */}
                     {isExpanded && (
                       <div style={{
                         padding: '0.75rem 0.9rem',
@@ -590,7 +624,6 @@ export default function App() {
                         flexDirection: 'column',
                         gap: '0.65rem'
                       }}>
-                        {/* AVIS DE L'IA */}
                         <div style={{ backgroundColor: '#232326', padding: '0.65rem', borderRadius: '8px', fontSize: '0.8rem', color: '#f5f5f7', lineHeight: '1.4' }}>
                           <span style={{ color: '#2997ff', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
                             💡 Diagnostic et Avis IA
@@ -598,12 +631,10 @@ export default function App() {
                           {m.aiAdvice}
                         </div>
 
-                        {/* CATALYSEUR FINANCIER */}
                         <div style={{ fontSize: '0.78rem', color: '#8e8e93' }}>
                           ⚡ <strong>Catalyseur de marché :</strong> {m.catalyst}
                         </div>
 
-                        {/* BOUTON D'OUVERTURE GRAPHIQUE PLEIN ÉCRAN */}
                         <button
                           onClick={() => setChartStock(m)}
                           style={{
@@ -703,11 +734,11 @@ export default function App() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: '#000', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem' }}>
                         <div>
                           <span style={{ color: '#8e8e93' }}>Prix d'achat unitaire :</span>
-                          <div style={{ fontWeight: 700, color: '#f5f5f7' }}>{p.average_buy_price} €</div>
+                          <div style={{ fontWeight: 700, color: '#f5f5f7' }}>{p.average_buy_price} {p.currency || '€'}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <span style={{ color: '#8e8e93' }}>Cours en direct :</span>
-                          <div style={{ fontWeight: 700, color: '#2997ff' }}>{p.current_price} €</div>
+                          <div style={{ fontWeight: 700, color: '#2997ff' }}>{p.current_price} {p.currency || '€'}</div>
                         </div>
                       </div>
 
@@ -726,7 +757,7 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (EN-TÊTE COMPTE BANCAIRE) */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL */}
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
           <div>
@@ -771,7 +802,7 @@ export default function App() {
                   type="text"
                   value={portfolioSearchQuery}
                   onChange={e => setPortfolioSearchQuery(e.target.value)}
-                  placeholder="Tapez (ex: Dassault, DSY.PA, Nvidia, Airbus...)"
+                  placeholder="Tapez (ex: Dassault, DSY.PA, MSFT, Nvidia...)"
                   style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
                 />
 
@@ -786,7 +817,7 @@ export default function App() {
                           <strong style={{ fontSize: '0.9rem' }}>{s.name}</strong>
                           <span style={{ color: '#2997ff', fontSize: '0.8rem', marginLeft: '0.3rem' }}>({s.ticker})</span>
                         </div>
-                        <div style={{ fontWeight: 700, color: '#34c759', fontSize: '0.85rem' }}>{s.priceFormatted} €</div>
+                        <div style={{ fontWeight: 700, color: '#34c759', fontSize: '0.85rem' }}>{s.priceFormatted} {s.currency}</div>
                       </div>
                     ))}
                   </div>
@@ -801,7 +832,7 @@ export default function App() {
                       type="button"
                       onClick={() => setNewPrice(selectedStock.price.toString())}
                       style={{ background: 'none', border: 'none', color: '#34c759', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                      Cours actuel : {selectedStock.price} €
+                      Cours actuel : {selectedStock.price} {selectedStock.currency}
                     </button>
                   </div>
 
@@ -818,7 +849,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat (€)</label>
+                      <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat ({selectedStock.currency})</label>
                       <input
                         type="number"
                         step="any"
@@ -869,7 +900,7 @@ export default function App() {
                         <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
                         <div style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
+                          padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
                           backgroundColor: isProfit ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
                           color: isProfit ? '#34c759' : '#ff3b30', marginTop: '0.15rem'
                         }}>
@@ -886,11 +917,11 @@ export default function App() {
                     }}>
                       <div>
                         <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Prix d'achat unitaire</span>
-                        <strong style={{ fontSize: '0.9rem', color: '#f5f5f7' }}>{p.average_buy_price} €</strong>
+                        <strong style={{ fontSize: '0.9rem', color: '#f5f5f7' }}>{p.average_buy_price} {p.currency || '€'}</strong>
                       </div>
                       <div style={{ textAlign: 'right', borderLeft: '1px solid #2c2c2e', paddingLeft: '0.8rem' }}>
                         <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Cours actuel en direct</span>
-                        <strong style={{ fontSize: '0.9rem', color: '#2997ff' }}>{p.current_price} €</strong>
+                        <strong style={{ fontSize: '0.9rem', color: '#2997ff' }}>{p.current_price} {p.currency || '€'}</strong>
                       </div>
                     </div>
 
@@ -919,7 +950,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE EXACT */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC BOUTON ACTUALISER ET 1H */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -932,6 +963,7 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
+            {/* EN-TÊTE MODAL AVEC BOUTON ACTUALISER EN DIRECT */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -945,8 +977,11 @@ export default function App() {
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
+                {/* COURS EN DIRECT AVEC DEVISE EXACTE ($ OU €) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>{chartStock.priceFormatted || chartStock.price || chartStock.current_price} €</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
+                    {chartStock.priceFormatted || chartStock.price || chartStock.current_price} {chartStock.currency || '€'}
+                  </span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
                     {chartStock.change || `+${chartStock.pnl_percent}%`}
                   </span>
@@ -956,11 +991,20 @@ export default function App() {
                   {chartStock.place || 'Paris · EUR'}
                 </div>
               </div>
+
+              {/* BOUTON D'ACTUALISATION INSTANTANÉE */}
+              <button
+                onClick={handleManualRefresh}
+                disabled={refreshingLive}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.45rem 0.75rem', backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '2.5rem' }}>
+                <RefreshCw size={13} className={refreshingLive ? 'animate-spin' : ''} />
+                <span>Actualiser</span>
+              </button>
             </div>
 
-            {/* SÉLECTEUR DE PÉRIODE */}
+            {/* SÉLECTEUR AVEC BOUTON 1H (DERNIÈRE HEURE GLISSANTE) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
-              {(['1D', '1W', '1M', '3M', '6M', '1Y'] as const).map(p => (
+              {(['1H', '1D', '1W', '1M', '3M', '1Y'] as const).map(p => (
                 <button
                   key={p}
                   onClick={() => setChartPeriod(p)}
@@ -970,19 +1014,19 @@ export default function App() {
                     color: chartPeriod === p ? '#ffffff' : '#8e8e93',
                     fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', textAlign: 'center'
                   }}>
-                  {p === '1D' ? '1J' : p === '1W' ? '1S' : p === '1M' ? '1M' : p === '3M' ? '3M' : p === '6M' ? '6M' : '1A'}
+                  {p === '1H' ? '1H' : p === '1D' ? '1J' : p === '1W' ? '1S' : p === '1M' ? '1M' : p === '3M' ? '3M' : '1A'}
                 </button>
               ))}
             </div>
 
-            {/* LE GRAPHIQUE PRÉCIS APPLE BOURSE */}
+            {/* GRAPHIQUE APPLE BOURSE AVEC QUADRILLAGE RÉEL */}
             {chartStock.history ? (
               renderAppleStocksChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du graphique...</div>
             )}
 
-            {/* DONNÉES FINANCIÈRES CLIQUABLES */}
+            {/* STATISTIQUES FINANCIÈRES SYNCHRONISÉES */}
             <div style={{ marginTop: '1.25rem', borderTop: '1px solid #1c1c1e', paddingTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
                 <span style={{ fontSize: '0.75rem', color: '#8e8e93', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -993,13 +1037,13 @@ export default function App() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem 0.5rem', fontSize: '0.8rem' }}>
                 {[
-                  { label: 'Ouverture', val: `${chartStock.open} €` },
+                  { label: 'Ouverture', val: `${chartStock.open} ${chartStock.currency || '€'}` },
                   { label: 'Vol.', val: chartStock.volume || '360,1 k' },
                   { label: 'H 52 sem.', val: chartStock.h52 || '38,20 €' },
-                  { label: 'Max.', val: `${chartStock.high} €` },
+                  { label: 'Max.', val: `${chartStock.high} ${chartStock.currency || '€'}` },
                   { label: 'PER', val: chartStock.per || '25,77' },
                   { label: 'B 52 sem.', val: chartStock.b52 || '24,10 €' },
-                  { label: 'Min.', val: `${chartStock.low} €` },
+                  { label: 'Min.', val: `${chartStock.low} ${chartStock.currency || '€'}` },
                   { label: 'Cap. bours.', val: chartStock.marketCap || '33,53 Md €' }
                 ].map((item, idx) => (
                   <div
@@ -1096,7 +1140,7 @@ export default function App() {
                     <div>
                       <strong style={{ color: '#34c759' }}>ACHAT IA</strong>
                       <div style={{ fontWeight: 700, color: '#fff', marginTop: '0.1rem' }}>{p.company_name} ({p.ticker})</div>
-                      <span style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Quantité : {p.shares} @ {p.average_buy_price} €</span>
+                      <span style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Quantité : {p.shares} @ {p.average_buy_price} {p.currency || '€'}</span>
                     </div>
                     <div style={{ textAlign: 'right', fontWeight: 800, color: '#2997ff' }}>
                       {p.current_value} €
