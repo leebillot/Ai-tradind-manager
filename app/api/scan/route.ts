@@ -14,53 +14,73 @@ function getSupabase() {
   return createClient(rawUrl, rawKey);
 }
 
-// BASSIN ÉLARGI : MÉGA-CAPS + MOYENNES CAPITALISATIONS & PÉPITES EXPLOSIVES (US & PARIS)
+// BASSIN ÉLARGI INCLUANT LES GROUPES DASSAULT, PÉPITES ET VALEURS MAJEURES
 const BASE_MARKET_UNIVERSE = [
-  // --- WALL STREET (US) : PÉPITES & CROISSANCE FORTE ---
-  { ticker: 'ASTS', name: 'AST SpaceMobile', market: 'US', basePrice: 26.40, category: 'SPATIAL / TÉLÉCOM', volatility: 8.5, catalyst: 'Déploiement constellation satellite directe aux smartphones.', aiBaseAdvice: 'Petite capitalisation à très fort potentiel d’explosion. Fort effet de levier.' },
-  { ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', basePrice: 44.50, category: 'IA / DÉFENSE', volatility: 6.2, catalyst: 'Signature de méga-contrats militaires US et forte adoption AIP.', aiBaseAdvice: 'Croissance fulgurante des marges, leadership incontesté dans l’IA opérationnelle.' },
-  { ticker: 'APP', name: 'AppLovin Corp', market: 'US', basePrice: 285.00, category: 'ADTECH / IA', volatility: 7.8, catalyst: 'Moteur publicitaire AXON IA générant des cash-flows records.', aiBaseAdvice: 'Pépite technologique en pleine accélération. Momentum institutionnel massif.' },
-  { ticker: 'RKLB', name: 'Rocket Lab USA', market: 'US', basePrice: 18.20, category: 'AÉROSPATIALE', volatility: 6.9, catalyst: 'Succès des lancements Neutron et contrats spatiaux commerciaux.', aiBaseAdvice: 'Le challenger numéro 1 de SpaceX sur les petits lancements orbitaux.' },
-  { ticker: 'IONQ', name: 'IonQ Inc', market: 'US', basePrice: 24.80, category: 'QUANTIQUE', volatility: 9.2, catalyst: 'Percée majeure sur les processeurs quantiques à piège à ions.', aiBaseAdvice: 'Actif hautement spéculatif : gains potentiels énormes mais stop-loss obligatoire.' },
-  { ticker: 'SOUN', name: 'SoundHound AI', market: 'US', basePrice: 6.80, category: 'IA VOCALE', volatility: 8.0, catalyst: 'Partenariats dans l’automobile et la restauration rapide.', aiBaseAdvice: 'Micro-cap à forte volatilité : viser des prises de profits rapides.' },
-  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', basePrice: 142.50, category: 'SEMI-CONDUCTEURS', volatility: 4.5, catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.', aiBaseAdvice: 'Pilier mondial du secteur IA avec valorisation encore justifiée.' },
-  { ticker: 'TSLA', name: 'Tesla Inc', market: 'US', basePrice: 254.00, category: 'AUTO / ROBOTIQUE', volatility: 5.5, catalyst: 'Homologation FSD en Chine et réseau de Robotaxis.', aiBaseAdvice: 'Forte sensibilité aux annonces d’Elon Musk. Bons points d’entrée en repli.' },
-  { ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', basePrice: 428.00, category: 'CLOUD GÉANT', volatility: 2.1, catalyst: 'Monétisation d’Azure OpenAI et des postes de travail Copilot.', aiBaseAdvice: 'Grande stabilité défensive, risque de baisse quasi nul.' },
+  // --- BOURSE DE PARIS (EURONEXT) ---
+  { ticker: 'DSY.PA', name: 'Dassault Systèmes', market: 'PARIS', basePrice: 34.20, category: 'LOGICIELS / IA 3D', keywords: 'dassault systemes 3d cad tech france', volatility: 4.8, catalyst: 'Croissance à deux chiffres des licences cloud 3DEXPERIENCE.', aiBaseAdvice: 'Leader mondial du jumeau numérique. Valorisation redevenue attractive après consolidation.' },
+  { ticker: 'AM.PA', name: 'Dassault Aviation', market: 'PARIS', basePrice: 198.50, category: 'DÉFENSE / AÉRO', keywords: 'dassault aviation rafale falcon defense armee', volatility: 5.2, catalyst: 'Commandes records à l’export pour les avions de combat Rafale.', aiBaseAdvice: 'Visibilité financière exceptionnelle sur 10 ans. Rempart défensif idéal.' },
+  { ticker: 'VU.PA', name: 'VusionGroup (SES-imagotag)', market: 'PARIS', basePrice: 148.00, category: 'IOT / RETAIL IA', keywords: 'vusion ses imagotag walmart retail iot', volatility: 6.5, catalyst: 'Déploiement massif des étiquettes intelligentes chez Walmart US.', aiBaseAdvice: 'Pépite française leader mondial de l’IoT commercial. Forte rentabilité.' },
+  { ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', basePrice: 242.00, category: 'INFRA DATA CENTERS', keywords: 'schneider electric data center energie transition', volatility: 3.8, catalyst: 'Équipement énergétique indispensable des data centers IA.', aiBaseAdvice: 'Hausse structurelle saine : profil de rendement très régulier.' },
+  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', basePrice: 624.00, category: 'LUXE MONDIAL', keywords: 'lvmh luxe arnault louis vuitton dior', volatility: 2.8, catalyst: 'Stabilisation de la consommation haut de gamme en Asie.', aiBaseAdvice: 'Support technique solide à 600 € : opportunité d’accumulation de long terme.' },
+  { ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', basePrice: 2080.00, category: 'ULTRA-LUXE', keywords: 'hermes birkin luxe maroquinerie', volatility: 2.2, catalyst: 'Commandes saturées et marges opérationnelles au sommet.', aiBaseAdvice: 'Le titre le plus solide de la cote européenne, imperméable aux crises.' },
+  { ticker: 'AIR.PA', name: 'Airbus SE', market: 'PARIS', basePrice: 141.20, category: 'AÉRONAUTIQUE', keywords: 'airbus avions a320 a350 defense', volatility: 3.2, catalyst: 'Cadences de livraisons d’avions commerciaux en hausse.', aiBaseAdvice: 'Carnet de commandes supérieur à 8 000 avions assurant une visibilité record.' },
+  { ticker: 'TTE.PA', name: 'TotalEnergies', market: 'PARIS', basePrice: 58.40, category: 'ÉNERGIE / DIVIDENDES', keywords: 'total energies petrol gaz dividende', volatility: 2.5, catalyst: 'Rendement du dividende élevé (7%) et rachats d’actions.', aiBaseAdvice: 'Actif de rendement très robuste sans volatilité excessive.' },
 
-  // --- PARIS (EURONEXT) : PÉPITES & CHAMPIONS INDUSTRIELS ---
-  { ticker: 'VU.PA', name: 'VusionGroup (SES-imagotag)', market: 'PARIS', basePrice: 148.00, category: 'IOT / RETAIL IA', volatility: 6.5, catalyst: 'Déploiement massif des étiquettes intelligentes chez Walmart US.', aiBaseAdvice: 'Pépite française leader mondial de l’IoT commercial. Forte rentabilité.' },
-  { ticker: 'SU.PA', name: 'Schneider Electric', market: 'PARIS', basePrice: 242.00, category: 'INFRA DATA CENTERS', volatility: 3.8, catalyst: 'Equipement énergétique indispensable des data centers IA.', aiBaseAdvice: 'Hausse structurelle saine : profil de rendement très régulier.' },
-  { ticker: 'SOI.PA', name: 'Soitec', market: 'PARIS', basePrice: 94.50, category: 'SEMI-CONDUCTEURS', volatility: 7.0, catalyst: 'Reprise du cycle des smartphones 5G et du carbure de silicium.', aiBaseAdvice: 'Forte décote historique : potentiel de rebond technique de +30%.' },
-  { ticker: 'MC.PA', name: 'LVMH Moët Hennessy', market: 'PARIS', basePrice: 624.00, category: 'LUXE MONDIAL', volatility: 2.8, catalyst: 'Stabilisation de la consommation haut de gamme en Asie.', aiBaseAdvice: 'Support technique solide à 600 € : opportunité d’accumulation de long terme.' },
-  { ticker: 'RMS.PA', name: 'Hermès International', market: 'PARIS', basePrice: 2080.00, category: 'ULTRA-LUXE', volatility: 2.2, catalyst: 'Commandes saturées et marges opérationnelles au sommet.', aiBaseAdvice: 'Le titre le plus solide de la cote européenne, imperméable aux crises.' },
-  { ticker: 'NANO.PA', name: 'Nanobiotix', market: 'PARIS', basePrice: 6.40, category: 'BIOTECH / ONCOLOGIE', volatility: 9.8, catalyst: 'Résultats cliniques de phase 3 en partenariat avec J&J.', aiBaseAdvice: 'Biotech à pile ou face : peut faire +50% en un jour sur annonce positive.' }
+  // --- WALL STREET (US) : PÉPITES & GÉANTS ---
+  { ticker: 'ASTS', name: 'AST SpaceMobile', market: 'US', basePrice: 26.40, category: 'SPATIAL / TÉLÉCOM', keywords: 'asts space mobile satellite telecom 5g espace', volatility: 8.5, catalyst: 'Déploiement constellation satellite directe aux smartphones.', aiBaseAdvice: 'Petite capitalisation à très fort potentiel d’explosion. Fort effet de levier.' },
+  { ticker: 'PLTR', name: 'Palantir Technologies', market: 'US', basePrice: 44.50, category: 'IA / DÉFENSE', keywords: 'palantir pltr karp ia data defense aip', volatility: 6.2, catalyst: 'Signature de méga-contrats militaires US et forte adoption AIP.', aiBaseAdvice: 'Croissance fulgurante des marges, leadership incontesté dans l’IA opérationnelle.' },
+  { ticker: 'APP', name: 'AppLovin Corp', market: 'US', basePrice: 285.00, category: 'ADTECH / IA', keywords: 'applovin app adtech pub mobile jeux ia', volatility: 7.8, catalyst: 'Moteur publicitaire AXON IA générant des cash-flows records.', aiBaseAdvice: 'Pépite technologique en pleine accélération. Momentum institutionnel massif.' },
+  { ticker: 'NVDA', name: 'Nvidia Corp', market: 'US', basePrice: 142.50, category: 'SEMI-CONDUCTEURS', keywords: 'nvidia nvda puces gpu blackwell ia ai', volatility: 4.5, catalyst: 'Demande record de puces Blackwell et marges brutes de 75%.', aiBaseAdvice: 'Pilier mondial du secteur IA avec valorisation encore justifiée.' },
+  { ticker: 'TSLA', name: 'Tesla Inc', market: 'US', basePrice: 254.00, category: 'AUTO / ROBOTIQUE', keywords: 'tesla tsla elon musk fsd robotaxi cybercab', volatility: 5.5, catalyst: 'Homologation FSD en Chine et réseau de Robotaxis.', aiBaseAdvice: 'Forte sensibilité aux annonces d’Elon Musk. Bons points d’entrée en repli.' },
+  { ticker: 'MSFT', name: 'Microsoft Corp', market: 'US', basePrice: 428.00, category: 'CLOUD GÉANT', keywords: 'microsoft msft windows azure openai copilot', volatility: 2.1, catalyst: 'Monétisation d’Azure OpenAI et des postes de travail Copilot.', aiBaseAdvice: 'Grande stabilité défensive, risque de baisse quasi nul.' },
+  { ticker: 'AAPL', name: 'Apple Inc', market: 'US', basePrice: 231.00, category: 'TECH / HARDWARE', keywords: 'apple aapl iphone ipad mac intelligence', volatility: 2.0, catalyst: 'Cycle de renouvellement porté par Apple Intelligence.', aiBaseAdvice: 'Générateur de cash massif et rachats constants d’actions.' }
 ];
 
-// Moteur de simulation dynamique du marché (met en avant les plus fortes hausses du jour)
+// Générateur de courbes historiques réalistes pour le graphique interactif (1J, 1S, 1M, 1A)
+function generateChartPoints(basePrice: number, changeVal: number) {
+  const points = (count: number, volatility: number, trendUp: boolean) => {
+    let p = basePrice * (trendUp ? 0.92 : 1.05);
+    const arr: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const step = (Math.sin(i * 1.5) + (Math.random() - 0.48)) * volatility;
+      p = Math.max(1, p + step);
+      arr.push(Number(p.toFixed(2)));
+    }
+    arr[arr.length - 1] = Number((basePrice * (1 + changeVal / 100)).toFixed(2));
+    return arr;
+  };
+
+  const isUp = changeVal >= 0;
+  return {
+    '1D': points(12, basePrice * 0.008, isUp),
+    '1W': points(14, basePrice * 0.015, isUp),
+    '1M': points(20, basePrice * 0.03, isUp),
+    '1Y': points(24, basePrice * 0.06, isUp)
+  };
+}
+
 function generateDynamicMarket() {
   return BASE_MARKET_UNIVERSE.map(item => {
-    // Calcul de variation dynamique avec volatilité
-    const randomFactor = (Math.sin(Date.now() / 10000 + item.basePrice) * 0.7) + (Math.cos(item.basePrice) * 0.3);
+    const randomFactor = (Math.sin(Date.now() / 15000 + item.basePrice) * 0.7) + (Math.cos(item.basePrice) * 0.3);
     const changeVal = Number((randomFactor * item.volatility).toFixed(2));
     const livePrice = Number((item.basePrice * (1 + changeVal / 100)).toFixed(2));
     const changeStr = (changeVal >= 0 ? '+' : '') + changeVal + '%';
 
-    // Détermination de l'Avis IA en fonction de la poussée du jour
     let aiSignal = 'CONSERVER';
     let aiConfidence = 82;
     let isSurge = false;
 
-    if (changeVal >= 7.0) {
+    if (changeVal >= 5.5) {
       aiSignal = '🔥 DÉTECTION PÉPITE (FORT)';
       aiConfidence = 96;
       isSurge = true;
-    } else if (changeVal >= 3.5) {
+    } else if (changeVal >= 2.5) {
       aiSignal = 'ACHAT FORT';
       aiConfidence = 92;
-    } else if (changeVal >= 1.0) {
+    } else if (changeVal >= 0.5) {
       aiSignal = 'ACHAT MODÉRÉ';
       aiConfidence = 87;
-    } else if (changeVal <= -3.0) {
+    } else if (changeVal <= -2.5) {
       aiSignal = 'OPPORTUNITÉ SUR REPLI';
       aiConfidence = 84;
     }
@@ -73,16 +93,18 @@ function generateDynamicMarket() {
       change: changeStr,
       changeRaw: changeVal,
       category: item.category,
+      keywords: item.keywords,
       aiSignal,
       aiConfidence,
       isSurge,
+      history: generateChartPoints(item.basePrice, changeVal),
       aiAdvice: isSurge 
-        ? `Alerte IA : Poussée explosive de ${changeStr} détectée ! Volumes d'achats records. Idéal pour capter un momentum de gain élevé.`
+        ? `Alerte IA : Poussée majeure de ${changeStr} détectée avec afflux de volumes. Moment idéal pour capter un fort momentum de gain.`
         : item.aiBaseAdvice,
       catalyst: item.catalyst,
-      trend: changeVal >= 4.0 ? 'Rupture haussière puissante' : changeVal >= 0 ? 'Progression haussière stable' : 'Consolidation technique'
+      trend: changeVal >= 3.5 ? 'Rupture haussière puissante' : changeVal >= 0 ? 'Progression haussière stable' : 'Consolidation technique'
     };
-  }).sort((a, b) => b.changeRaw - a.changeRaw); // Les plus grosses hausses remontent TOUJOURS en premier !
+  }).sort((a, b) => b.changeRaw - a.changeRaw);
 }
 
 export async function POST(req: Request) {
@@ -97,7 +119,7 @@ export async function POST(req: Request) {
 
     const currentMarkets = generateDynamicMarket();
 
-    // 1. AJOUT D'UNE ACTION RÉELLE
+    // 1. AJOUT MANUEL DANS MON PORTEFEUILLE
     if (action === 'ADD_MANUAL_POSITION') {
       const { ticker, name, shares, averageBuyPrice, alertThreshold } = body;
       const { error } = await supabase.from('manual_portfolio').insert({
@@ -110,17 +132,17 @@ export async function POST(req: Request) {
       });
 
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-      return NextResponse.json({ success: true, message: `Position ${ticker} ajoutée à votre portefeuille !` });
+      return NextResponse.json({ success: true, message: `Position ${ticker} enregistrée avec succès !` });
     }
 
-    // 2. SUPPRESSION D'ACTION RÉELLE
+    // 2. SUPPRESSION D'ACTION MANUELLE
     if (action === 'DELETE_MANUAL_POSITION') {
       const { positionId } = body;
       await supabase.from('manual_portfolio').delete().eq('id', positionId).eq('user_id', userId);
       return NextResponse.json({ success: true, message: 'Position supprimée.' });
     }
 
-    // 3. RÉINITIALISATION DE LA SIMULATION 500 €
+    // 3. RESET DE LA SIMULATION 500 €
     if (action === 'RESET_SIMULATION') {
       await supabase.from('simulation_positions').delete().eq('user_id', userId);
       await supabase.from('simulation_portfolio').upsert({
@@ -133,7 +155,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'Simulation 500 € réinitialisée avec succès.' });
     }
 
-    // 4. CYCLE D'ACHAT AUTOMATIQUE (CHASSE AUX PÉPITES ET HAUTS RENDEMENTS)
+    // 4. CYCLE D'ACHAT AUTOMATIQUE SIMULATION
     if (action === 'AUTO_SIMULATION_STEP') {
       let { data: simPort } = await supabase.from('simulation_portfolio').select('*').eq('user_id', userId).maybeSingle();
       if (!simPort) {
@@ -145,14 +167,12 @@ export async function POST(req: Request) {
       const { data: currentPositions } = await supabase.from('simulation_positions').select('ticker').eq('user_id', userId);
       const owned = new Set((currentPositions || []).map((p: any) => p.ticker));
 
-      // L'IA cible EN PRIORITÉ les plus fortes hausses et pépites du jour
       const topOpportunities = currentMarkets.filter(m => m.aiConfidence >= 90 && !owned.has(m.ticker));
       const newPurchases: any[] = [];
 
       for (const target of topOpportunities) {
         if (cash < 20) break;
 
-        // Allouer du cash proportionnel à la force de l'opportunité
         const investAmount = Number(Math.min(cash >= 150 ? 70 : 45, cash).toFixed(2));
         if (investAmount < 15) break;
 
@@ -181,8 +201,8 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         message: newPurchases.length > 0 
-          ? `L'IA a investi sur les pépites : ${newPurchases.map(p => `${p.ticker} (${p.current_value}€)`).join(', ')}`
-          : 'L’IA maintient ses positions gagnantes actuelles.'
+          ? `L'IA a investi sur : ${newPurchases.map(p => `${p.ticker} (${p.current_value}€)`).join(', ')}`
+          : 'L’IA maintient ses positions actuelles.'
       });
     }
 
@@ -204,7 +224,6 @@ export async function GET(req: Request) {
     let simulationPositions: any[] = [];
 
     if (userId) {
-      // Vrai Portefeuille
       const { data: mPos } = await supabase.from('manual_portfolio').select('*').eq('user_id', userId);
       manualPositions = (mPos || []).map((p: any) => {
         const live = dynamicMarkets.find(m => m.ticker === p.ticker);
@@ -221,12 +240,12 @@ export async function GET(req: Request) {
           cost_basis: cost,
           pnl,
           pnl_percent: pnlPct,
+          history: live?.history,
           aiAdvice: live?.aiAdvice || 'Action sous surveillance continue.',
           aiSignal: live?.aiSignal || 'SURVEILLANCE'
         };
       });
 
-      // Simulation 500 €
       const { data: sPort } = await supabase.from('simulation_portfolio').select('*').eq('user_id', userId).maybeSingle();
       if (sPort) simulationPortfolio = sPort;
 
@@ -247,7 +266,8 @@ export async function GET(req: Request) {
           current_value: val,
           cost_basis: cost,
           pnl,
-          pnl_percent: pnlPct
+          pnl_percent: pnlPct,
+          history: live?.history
         };
       });
 
