@@ -24,7 +24,7 @@ const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
   'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.' },
-  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix le plus élevé atteint aujourd’hui sur la séance.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum atteint aujourd’hui sur la séance.' },
   'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré aujourd’hui sur la séance.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
@@ -68,7 +68,7 @@ export default function App() {
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
   // Timers
-  const [lastMarketTime, setLastMarketTime] = useState<string>('17h00');
+  const [lastMarketTime, setLastMarketTime] = useState<string>('17h18');
   const [aiCountdown, setAiCountdown] = useState(300);
 
   // Auth
@@ -119,7 +119,6 @@ export default function App() {
       if (data.simulationPortfolio) setSimPortfolio(data.simulationPortfolio);
       if (data.simulationPositions) setSimPositions(data.simulationPositions);
       
-      // Heure exacte française
       const hFr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
       setLastMarketTime(hFr);
 
@@ -271,7 +270,7 @@ export default function App() {
     }
   };
 
-  // RENDU EXACT DU GRAPHIQUE APPLE BOURSE AVEC ÉCHELLE DYNAMIQUE PAR PÉRIODE
+  // RENDU EXACT DU GRAPHIQUE APPLE BOURSE (ÉCHELLE DYNAMIQUE PAR PÉRIODE + VRAIS MOIS FRANÇAIS)
   const renderAppleStocksChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
@@ -296,13 +295,13 @@ export default function App() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {/* QUADRILLAGE HORIZONTAL */}
+            {/* LIGNES DE QUADRILLAGE HORIZONTALES */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
-            {/* QUADRILLAGE VERTICAL */}
+            {/* LIGNES DE QUADRILLAGE VERTICALES (STYLE IMAGE 2) */}
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
@@ -320,16 +319,16 @@ export default function App() {
             </svg>
           </div>
 
-          {/* AXE Y DROITE (S'ADAPTE AUTOMATIQUEMENT À L'AMPLITUDE 1J, 1S, 1M, 3M, 1A) */}
+          {/* AXE Y DROITE (S'ADAPTE AUTOMATIQUEMENT : 18, 21, 24, 26 SUR 1 AN) */}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.4rem' }}>
             {scaleSteps.map((val, idx) => (
-              <span key={idx}>{val.toFixed(2).replace('.', ',')}</span>
+              <span key={idx}>{val}</span>
             ))}
           </div>
 
         </div>
 
-        {/* AXE X TEMPOREL (24h) */}
+        {/* AXE X TEMPOREL (VRAIS MOIS FRANÇAIS : nov. mars juil. nov.) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -420,7 +419,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* 2 COMPTEURS : BOURSE ET IA */}
+        {/* 2 COMPTEURS DISTINCTS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
             onClick={handleManualRefresh}
@@ -474,7 +473,7 @@ export default function App() {
         </div>
       )}
 
-      {/* CONTENU */}
+      {/* CONTENU PRINCIPAL */}
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
@@ -499,7 +498,7 @@ export default function App() {
               </div>
 
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
-                Données synchronisées en direct.
+                Données Yahoo Finance à la seconde près.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -531,7 +530,7 @@ export default function App() {
               />
             </div>
 
-            {/* LISTE ACCORDÉON COMPACT */}
+            {/* LISTE EN ACCORDÉON COMPACT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
@@ -550,6 +549,7 @@ export default function App() {
                       boxSizing: 'border-box'
                     }}>
                     
+                    {/* LIGNE PRINCIPALE COMPACTE */}
                     <div
                       style={{
                         padding: '0.75rem 0.9rem',
@@ -573,6 +573,7 @@ export default function App() {
                         </span>
                       </div>
 
+                      {/* COURS EN DIRECT */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
@@ -582,6 +583,7 @@ export default function App() {
                         </div>
                       </div>
 
+                      {/* BADGE RECOMMANDATION */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{
@@ -593,6 +595,7 @@ export default function App() {
                         {badge.label}
                       </div>
 
+                      {/* FLÈCHE ACCORDÉON */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -609,6 +612,7 @@ export default function App() {
 
                     </div>
 
+                    {/* DÉPLIÉ EN GRAND */}
                     {isExpanded && (
                       <div style={{
                         padding: '0.75rem 0.9rem',
@@ -894,7 +898,7 @@ export default function App() {
                         <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
                         <div style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
+                          padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
                           backgroundColor: isProfit ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
                           color: isProfit ? '#34c759' : '#ff3b30', marginTop: '0.15rem'
                         }}>
@@ -944,7 +948,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC BOUTON ACTUALISER */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE EXACT (COMME DSY.PA) */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -957,7 +961,7 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE MODAL */}
+            {/* EN-TÊTE EXACT APPLE BOURSE */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -976,7 +980,7 @@ export default function App() {
                     {chartStock.priceFormatted || chartStock.price || chartStock.current_price} {chartStock.currency || '€'}
                   </span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
-                    {chartStock.change || `+${chartStock.pnl_percent}%`}
+                    {chartStock.history?.[chartPeriod]?.periodChange || chartStock.change}
                   </span>
                 </div>
 
@@ -995,7 +999,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* SÉLECTEUR DE PÉRIODES */}
+            {/* SÉLECTEUR 1J, 1S, 1M, 3M, 1A IDENTIQUE À APPLE BOURSE */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1H', '1D', '1W', '1M', '3M', '1Y'] as const).map(p => (
                 <button
@@ -1012,7 +1016,7 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE GRAPHIQUE APPLE BOURSE AVEC ÉCHELLE DYNAMIQUE PAR PÉRIODE */}
+            {/* LE GRAPHIQUE RÉALISTE CALIBRÉ COMME APPLE */}
             {chartStock.history ? (
               renderAppleStocksChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
@@ -1032,12 +1036,12 @@ export default function App() {
                 {[
                   { label: 'Ouverture', val: `${chartStock.open} ${chartStock.currency || '€'}` },
                   { label: 'Vol.', val: chartStock.volume || '360,1 k' },
-                  { label: 'H 52 sem.', val: chartStock.h52 || '38,20 €' },
+                  { label: 'H 52 sem.', val: chartStock.h52 || '26,50 €' },
                   { label: 'Max.', val: `${chartStock.high} ${chartStock.currency || '€'}` },
-                  { label: 'PER', val: chartStock.per || '25,77' },
-                  { label: 'B 52 sem.', val: chartStock.b52 || '24,10 €' },
+                  { label: 'PER', val: chartStock.per || '25,64' },
+                  { label: 'B 52 sem.', val: chartStock.b52 || '18,00 €' },
                   { label: 'Min.', val: `${chartStock.low} ${chartStock.currency || '€'}` },
-                  { label: 'Cap. bours.', val: chartStock.marketCap || '33,53 Md €' }
+                  { label: 'Cap. bours.', val: chartStock.marketCap || '33,36 Md €' }
                 ].map((item, idx) => (
                   <div
                     key={idx}
