@@ -442,7 +442,7 @@ export async function GET(req: Request) {
       manualPositions,
       simulationPortfolio,
       simulationPositions,
-      serverTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      serverTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
