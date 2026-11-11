@@ -24,11 +24,11 @@ const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
   'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la séance ce matin.' },
-  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui sur la séance.' },
-  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré aujourd’hui sur la séance.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui sur la séance. Le cours actuel ne peut pas le dépasser.' },
+  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré pour cette action aujourd’hui.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
-  'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse (nombre d’actions × prix actuel).' },
+  'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse.' },
   'H 52 sem.': { title: 'Plus Haut 52 Semaines', desc: 'Le record absolu de prix atteint par cette action sur les 12 derniers mois.' },
   'B 52 sem.': { title: 'Plus Bas 52 Semaines', desc: 'Le plancher de prix touché par cette action sur les 12 derniers mois.' }
 };
@@ -51,10 +51,11 @@ export default function App() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
 
-  // Filtres Bourse & Les 4 Tris Corrigés Typés (Empêche l'erreur de build)
+  // Filtres Bourse & Tris
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
   const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'GAIN_1Y' | 'DROP_24H' | 'DROP_1Y'>('DEFAULT');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
+  const [marketSearchResults, setMarketSearchResults] = useState<any[]>([]);
 
   // Recherche Portefeuille
   const [portfolioSearchQuery, setPortfolioSearchQuery] = useState('');
@@ -133,7 +134,24 @@ export default function App() {
     }
   };
 
-  // RECHERCHE EN DIRECT MONDIALE
+  // RECHERCHE EN DIRECT MONDIALE SUR L'ACCUEIL (YAHOO)
+  useEffect(() => {
+    const q = marketSearchQuery.trim();
+    if (q.length >= 2) {
+      const delay = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/scan?searchQuery=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          if (data.results) setMarketSearchResults(data.results);
+        } catch (e) {}
+      }, 250);
+      return () => clearTimeout(delay);
+    } else {
+      setMarketSearchResults([]);
+    }
+  }, [marketSearchQuery]);
+
+  // RECHERCHE EN DIRECT DANS MON PORTEFEUILLE
   useEffect(() => {
     const q = portfolioSearchQuery.trim();
     if (q.length >= 2) {
@@ -143,14 +161,14 @@ export default function App() {
           const data = await res.json();
           if (data.results) setUniversalSearchResults(data.results);
         } catch (e) {}
-      }, 300);
+      }, 250);
       return () => clearTimeout(delay);
     } else {
       setUniversalSearchResults([]);
     }
   }, [portfolioSearchQuery]);
 
-  // CHARGEMENT DIRECT DU VRAI GRAPHIQUE YAHOO BRUT
+  // CHARGEMENT DIRECT DU VRAI GRAPHIQUE YAHOO
   const fetchLiveChartData = async (ticker: string, period: string) => {
     setChartLoading(true);
     setScrubPoint(null);
@@ -313,7 +331,7 @@ export default function App() {
   const getBadgeStyle = (colorType: string) => {
     switch (colorType) {
       case 'GREEN_DARK':
-        return { bg: 'rgba(5, 150, 105, 0.3)', border: '#059669', text: '#10b981', label: 'ACHAT FORT' };
+        return { bg: 'rgba(5, 150, 105, 0.35)', border: '#059669', text: '#10b981', label: 'ACHAT FORT' };
       case 'GREEN_LIGHT':
         return { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#34d399', label: 'ACHAT' };
       case 'YELLOW':
@@ -324,7 +342,7 @@ export default function App() {
     }
   };
 
-  // RENDU EXACT DU VRAI GRAPHIQUE YAHOO FINANCE AVEC CURSEUR TACTILE
+  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE SANS CLIPPING
   const renderAppleStocksRealChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
@@ -492,6 +510,14 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000000', color: '#f5f5f7', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
+      {/* ANIMATION DE ROTATION POUR LE REFRESH */}
+      <style jsx global>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
       {/* HEADER iOS */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -506,19 +532,20 @@ export default function App() {
           </div>
         </div>
 
+        {/* 2 HORLOGES PROPRES ET ESPACÉES */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
             onClick={handleManualRefresh}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem', cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#2c2c2e', padding: '0.3rem 0.55rem', borderRadius: '14px', fontSize: '0.7rem', cursor: 'pointer' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#34c759' }} />
-            <span style={{ color: '#8e8e93' }}>Bourse :</span>
+            <span style={{ color: '#8e8e93' }}>Bourse</span>
             <strong style={{ color: '#fff' }}>{lastMarketTime}</strong>
-            <RefreshCw size={10} color="#2997ff" className={refreshingLive ? 'animate-spin' : ''} />
+            <RefreshCw size={11} color="#2997ff" style={{ animation: refreshingLive ? 'spin 1s linear infinite' : 'none' }} />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem' }}>
-            <Clock size={10} color="#ff9f0a" />
-            <span style={{ color: '#8e8e93' }}>IA :</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#2c2c2e', padding: '0.3rem 0.55rem', borderRadius: '14px', fontSize: '0.7rem' }}>
+            <Clock size={11} color="#ff9f0a" />
+            <span style={{ color: '#8e8e93' }}>IA</span>
             <strong style={{ color: '#fff' }}>{formatTimer(aiCountdown)}</strong>
           </div>
 
@@ -563,7 +590,7 @@ export default function App() {
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : MARCHÉS (LES 4 TRIS LEBONCOIN & ACCORDÉON) */}
+        {/* ONGLET 1 : MARCHÉS (RECHERCHE MONDIALE & 4 TRIS) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
@@ -578,13 +605,13 @@ export default function App() {
                   onClick={handleManualRefresh}
                   disabled={refreshingLive}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', border: 'none', color: '#2997ff', padding: '0.35rem 0.65rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                  <RefreshCw size={12} className={refreshingLive ? 'animate-spin' : ''} />
-                  <span>Actualiser</span>
+                  <RefreshCw size={12} style={{ animation: refreshingLive ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>{refreshingLive ? 'Chargement...' : 'Actualiser'}</span>
                 </button>
               </div>
 
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
-                Données Yahoo Finance en temps réel.
+                100% extrait de Yahoo Finance en temps réel.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -603,7 +630,7 @@ export default function App() {
                 ))}
               </div>
 
-              {/* LES 4 FILTRES DE TRI COMPLETS */}
+              {/* LES 4 FILTRES DE TRI */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.6rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
                 <span style={{ fontSize: '0.7rem', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                   <Filter size={12} /> Trier :
@@ -641,19 +668,41 @@ export default function App() {
               </div>
             </div>
 
-            {/* RECHERCHE */}
+            {/* RECHERCHE UNIVERSELLE MONDIALE SUR L'ACCUEIL */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 value={marketSearchQuery}
                 onChange={e => setMarketSearchQuery(e.target.value)}
-                placeholder="Rechercher (DSY.PA, MSFT, Nvidia...)"
+                placeholder="Rechercher n'importe quelle entreprise (Ferrari, Renault, Apple, Air France...)"
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
+
+              {marketSearchResults.length > 0 && (
+                <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: '8px', zIndex: 20, maxHeight: '220px', overflowY: 'auto' }}>
+                  {marketSearchResults.map(s => (
+                    <div
+                      key={s.ticker}
+                      onClick={() => {
+                        setChartStock({ ticker: s.ticker, name: s.name, market: s.market, currency: s.market === 'PARIS' ? '€' : '$', place: s.market === 'PARIS' ? 'Paris · EUR' : 'US · USD', change: '+0,00 %', changeRaw: 0 });
+                        setRealChartData(null);
+                        setMarketSearchQuery('');
+                        setMarketSearchResults([]);
+                      }}
+                      style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #3a3a3c', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem' }}>{s.name}</strong>
+                        <span style={{ color: '#2997ff', fontSize: '0.8rem', marginLeft: '0.3rem' }}>({s.ticker})</span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>{s.market === 'PARIS' ? 'Paris' : 'Wall Street'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* LISTE EN ACCORDÉON COMPACT */}
+            {/* LISTE EN ACCORDÉON AVEC LES 4 COULEURS STRICTES */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredAndSortedMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
@@ -779,7 +828,7 @@ export default function App() {
             <div style={{ marginBottom: '1.2rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Simulation Autonome (500 €)</h2>
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0.2rem 0 1rem 0' }}>
-                L'IA gère et arbitre ce capital fictif en direct sur les pépites.
+                L'IA arbitre de manière autonome : elle vend ses gains (+5%) et coupe les pertes (-3.5%).
               </p>
 
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -791,8 +840,8 @@ export default function App() {
                     padding: '0.7rem', backgroundColor: '#34c759', color: '#000',
                     border: 'none', borderRadius: '8px', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer'
                   }}>
-                  <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-                  {loading ? 'L’IA analyse...' : 'Déclencher Cycle IA'}
+                  <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                  {loading ? 'L’IA arbitre...' : 'Déclencher Cycle IA'}
                 </button>
 
                 <button
@@ -908,14 +957,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* RECHERCHE UNIVERSELLE */}
+            {/* BARRE DE RECHERCHE UNIVERSELLE DISCRÈTE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 value={portfolioSearchQuery}
                 onChange={e => setPortfolioSearchQuery(e.target.value)}
-                placeholder="Rechercher une action (ex: Renault, Kering, Apple, Air France...)"
+                placeholder="Rechercher une action à ajouter (ex: Renault, Ferrari, Kering, Apple...)"
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
               />
 
@@ -986,6 +1035,7 @@ export default function App() {
               </form>
             )}
 
+            {/* LISTE ACCORDÉON PORTFOLIO */}
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.6rem' }}>
               Vos Lignes en Portefeuille ({manualPositions.length})
             </h3>
@@ -1102,7 +1152,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE YAHOO FINANCE AVEC CURSEUR TACTILE SANS CLIPPING */}
+      {/* MODAL GRAPHIQUE YAHOO FINANCE AVEC CURSEUR TACTILE */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -1145,9 +1195,9 @@ export default function App() {
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshingLive || chartLoading}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.45rem 0.75rem', backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '2.5rem' }}>
-                <RefreshCw size={13} className={refreshingLive || chartLoading ? 'animate-spin' : ''} />
-                <span>Actualiser</span>
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.45rem 0.75rem', backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '2.5rem' }}>
+                <RefreshCw size={13} style={{ animation: (refreshingLive || chartLoading) ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{refreshingLive || chartLoading ? 'Chargement...' : 'Actualiser'}</span>
               </button>
             </div>
 
@@ -1168,10 +1218,10 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE VRAI GRAPHIQUE YAHOO FINANCE SANS AUCUN CLIPPING */}
+            {/* VRAI GRAPHIQUE YAHOO FINANCE SANS CLIPPING */}
             {chartLoading ? (
               <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', fontSize: '0.85rem', backgroundColor: '#000', borderRadius: '12px' }}>
-                <RefreshCw size={18} className="animate-spin" style={{ marginRight: '0.5rem' }} /> Chargement du cours Yahoo Finance...
+                <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', marginRight: '0.5rem' }} /> Chargement du cours Yahoo Finance...
               </div>
             ) : realChartData ? (
               renderAppleStocksRealChart(realChartData, (chartStock.changeRaw ?? 1) >= 0)
