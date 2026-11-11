@@ -22,31 +22,30 @@ function getBrowserSupabase() {
 
 const supabase = getBrowserSupabase();
 
-// DÉFINITIONS ÉDUCATIVES DES TERMES BOURSIERS APPLE STOCKS
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
   'Ouverture': {
     title: 'Cours d’Ouverture',
-    desc: 'Le prix de la toute première transaction négociée au moment où la bourse a ouvert ce matin.'
+    desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.'
   },
   'Max.': {
-    title: 'Plus Haut du Jour',
-    desc: 'Le prix maximum payé par un acheteur pour cette action pendant la séance actuelle.'
+    title: 'Plus Haut de la Séance',
+    desc: 'Prix maximum atteint par l’action aujourd’hui pendant les heures de cotation.'
   },
   'Min.': {
-    title: 'Plus Bas du Jour',
-    desc: 'Le prix le plus bas auquel cette action a été vendue aujourd’hui.'
+    title: 'Plus Bas de la Séance',
+    desc: 'Prix le plus bas auquel l’action s’est échangée aujourd’hui.'
   },
   'Vol.': {
     title: 'Volume Échangé',
-    desc: 'Le nombre total d’actions achetées et vendues aujourd’hui. Un volume massif confirme la puissance et la fiabilité d’une hausse.'
+    desc: 'Nombre total de titres achetés et vendus au cours de la séance. Un volume massif confirme la force réelle d’un mouvement.'
   },
   'PER': {
     title: 'PER (Price Earnings Ratio)',
-    desc: 'Ratio Cours/Bénéfice. Il indique combien de fois les investisseurs paient le bénéfice annuel de l’entreprise. Un PER modéré indique une action au juste prix, un PER élevé indique une forte attente de croissance future.'
+    desc: 'Ratio Cours/Bénéfice. Indique combien de fois les investisseurs paient le bénéfice annuel de l’entreprise. Un PER bas peut indiquer une sous-évaluation, un PER haut une forte croissance espérée.'
   },
   'Cap. bours.': {
     title: 'Capitalisation Boursière',
-    desc: 'La valeur marchande totale de toute l’entreprise en bourse (le prix d’une seule action multiplié par le nombre total d’actions émises).'
+    desc: 'Valeur marchande totale de l’entreprise en bourse (nombre total d’actions multiplié par le prix actuel).'
   },
   'H 52 sem.': {
     title: 'Plus Haut sur 52 Semaines (1 An)',
@@ -85,6 +84,7 @@ export default function App() {
   // Modal Graphique Style Apple Bourse
   const [chartStock, setChartStock] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | '1Y'>('1D');
+  const [scrubPoint, setScrubPoint] = useState<{ price: number; label: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
@@ -214,7 +214,7 @@ export default function App() {
   const handleRunSimulation = async () => {
     if (!user) return;
     setLoading(true);
-    setStatusMsg('Analyse algorithmique en cours...');
+    setStatusMsg('Gemini et Groq scannent le marché...');
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -269,48 +269,71 @@ export default function App() {
     }
   };
 
-  // RENDU EXACT DU GRAPHIQUE APPLE BOURSE (ÉCHELLE À DROITE, HEURES EN BAS, LIGNES)
-  const renderAppleStocksExactChart = (chartData: any, isUp: boolean) => {
+  // RENDU ULTRA-RÉALISTE DU GRAPHIQUE APPLE BOURSE (QUADRILLAGE + COURBE DENSE + 24H)
+  const renderAppleStocksProChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
     const min = chartData.low;
     const max = chartData.high;
     const range = max - min || 1;
-    const w = 270;
-    const h = 180;
+    const w = 280;
+    const h = 200;
 
+    // Coordonnées de la courbe haute densité (70+ points)
     const coords = points.map((pt: any, idx: number) => {
       const x = (idx / (points.length - 1)) * w;
-      const y = h - ((pt.price - min) / range) * (h - 30) - 15;
-      return `${x},${y}`;
+      const y = h - ((pt.price - min) / range) * (h - 40) - 20;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
 
-    const strokeColor = isUp ? '#34c759' : '#ff3b30'; // Couleurs exactes Apple iOS
-    const fillColor = isUp ? 'rgba(52, 199, 89, 0.14)' : 'rgba(255, 59, 48, 0.14)';
+    const strokeColor = isUp ? '#34c759' : '#ff3b30'; // Vert & Rouge Apple iOS natifs
+    const fillColor = isUp ? 'rgba(52, 199, 89, 0.18)' : 'rgba(255, 59, 48, 0.18)';
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: number[] = chartData.scaleSteps || [max, min];
 
     return (
       <div style={{ backgroundColor: '#000000', borderRadius: '12px', padding: '1rem 0.5rem 0.5rem 0.5rem', border: '1px solid #1c1c1e', boxSizing: 'border-box' }}>
         
-        {/* CONTENEUR GRAPHIQUE + ÉCHELLE VERTICALE À DROITE */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.5rem', height: `${h}px`, position: 'relative' }}>
+        {/* GRILLE + COURBE + AXE Y DROITE */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
           {/* ZONE SVG */}
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          <div 
+            style={{ position: 'relative', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
+            onPointerMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              const idx = Math.round(ratio * (points.length - 1));
+              if (points[idx]) setScrubPoint(points[idx]);
+            }}
+            onPointerLeave={() => setScrubPoint(null)}>
             
-            {/* Lignes de repère grises comme dans l'app Bourse */}
+            {/* LIGNES HORIZONTALES DU QUADRILLAGE (STYLE IMAGE 1) */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
-            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
+            <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
+            <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
+            {/* LIGNES VERTICALES DU QUADRILLAGE ALIGNÉES SUR 11, 13, 15, 17 */}
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
+
+            {/* SVG TRACÉ DENSE */}
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-              <polygon points={polygon} fill={fillColor} />
-              <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <defs>
+                <linearGradient id="appleGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={strokeColor} stopOpacity="0.35" />
+                  <stop offset="85%" stopColor={strokeColor} stopOpacity="0.05" />
+                  <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon points={polygon} fill="url(#appleGradient)" />
+              <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
 
-          {/* ÉCHELLE DES PRIX À DROITE (COMME SUR LA CAPTURE DSY.PA) */}
+          {/* ÉCHELLE DES PRIX À DROITE (IMAGE 1 EXACTE) */}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.5rem' }}>
             {scaleSteps.map((val, idx) => (
               <span key={idx}>{val.toFixed(2).replace('.', ',')}</span>
@@ -319,10 +342,10 @@ export default function App() {
 
         </div>
 
-        {/* AXE X : REPÈRES TEMPORELS EN BAS (11, 13, 15, 17) */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0.5rem 0.2rem 0.5rem', fontSize: '0.75rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.5rem' }}>
-          {points.map((pt: any, i: number) => (
-            <span key={i}>{pt.label}</span>
+        {/* AXE X TEMPOREL (11, 13, 15, 17) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.65rem 0.5rem 0.2rem 0.5rem', fontSize: '0.75rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.5rem' }}>
+          {(chartData.xMarkers || []).map((marker: string, i: number) => (
+            <span key={i}>{marker}</span>
           ))}
         </div>
 
@@ -397,7 +420,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000000', color: '#f5f5f7', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
-      {/* HEADER iOS */}
+      {/* HEADER iOS AVEC TIMER 24H */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
@@ -455,11 +478,11 @@ export default function App() {
         </div>
       )}
 
-      {/* CONTENU PRINCIPAL */}
+      {/* MAIN */}
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : ANALYSE DU MARCHÉ & PÉPITES */}
+        {/* ONGLET 1 : DÉTECTEUR DE PÉPITES */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
@@ -489,7 +512,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRE DE RECHERCHE */}
+            {/* RECHERCHE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
@@ -501,14 +524,14 @@ export default function App() {
               />
             </div>
 
-            {/* LISTE DES ACTIONS */}
+            {/* LISTE ACTIONS */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {filteredMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
                 return (
                   <div
                     key={m.ticker}
-                    onClick={() => setChartStock(m)}
+                    onClick={() => { setChartStock(m); setScrubPoint(null); }}
                     style={{
                       backgroundColor: '#1c1c1e',
                       border: `1px solid ${badge.border}`,
@@ -538,7 +561,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* BADGE DU CODE COULEUR DE RECOMMANDATION */}
+                    {/* BADGE CODE COULEUR */}
                     <div style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '0.45rem 0.75rem', borderRadius: '6px',
@@ -569,7 +592,7 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 2 : SIMULATION 500 € + HISTORIQUE */}
+        {/* ONGLET 2 : SIMULATION 500 € */}
         {/* ======================================================== */}
         {activeTab === 'AUTO_SIM' && (
           <div>
@@ -635,7 +658,7 @@ export default function App() {
                 simPositions.map((p) => {
                   const isProfit = Number(p.pnl) >= 0;
                   return (
-                    <div key={p.id} onClick={() => setChartStock(p)} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
+                    <div key={p.id} onClick={() => { setChartStock(p); setScrubPoint(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <strong style={{ fontSize: '1rem' }}>{p.company_name}</strong>
@@ -674,8 +697,6 @@ export default function App() {
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
           <div>
-            
-            {/* EN-TÊTE STYLE BANQUE / VALEUR TOTALE */}
             <div style={{
               backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '16px',
               padding: '1.25rem', marginBottom: '1.5rem', background: 'linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%)'
@@ -707,7 +728,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* FORMULAIRE RECHERCHE */}
+            {/* RECHERCHE */}
             <div style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Ajouter une action à surveiller</span>
 
@@ -842,7 +863,7 @@ export default function App() {
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
                       <button
-                        onClick={() => setChartStock(p)}
+                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
                         style={{ background: 'none', border: 'none', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <LineChart size={14} /> Voir le graphique Bourse
                       </button>
@@ -878,7 +899,7 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE EXACT APPLE BOURSE */}
+            {/* EN-TÊTE EXACT APPLE BOURSE AVEC CURSEUR INTERACTIF */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -892,8 +913,11 @@ export default function App() {
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
+                {/* PRIX EN DIRECT OU PRIX DU POINT SURVOLÉ */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>{chartStock.priceFormatted || chartStock.price || chartStock.current_price} €</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
+                    {scrubPoint ? scrubPoint.price.toFixed(2).replace('.', ',') : (chartStock.priceFormatted || chartStock.price || chartStock.current_price)} €
+                  </span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
                     {chartStock.change || `+${chartStock.pnl_percent}%`}
                   </span>
@@ -905,12 +929,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRE DE PÉRIODE OFFICIELLE 1J, 1S, 1M, 3M, 6M, 1A */}
+            {/* SÉLECTEUR DE PÉRIODE OFFICIEL */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1D', '1W', '1M', '3M', '6M', '1Y'] as const).map(p => (
                 <button
                   key={p}
-                  onClick={() => setChartPeriod(p)}
+                  onClick={() => { setChartPeriod(p); setScrubPoint(null); }}
                   style={{
                     padding: '0.45rem 0', borderRadius: '8px', border: 'none',
                     backgroundColor: chartPeriod === p ? '#3a3a3c' : 'transparent',
@@ -922,14 +946,14 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE GRAPHIQUE PRÉCIS APPLE BOURSE */}
+            {/* LE GRAPHIQUE PRÉCIS HAUTE DENSITÉ */}
             {chartStock.history ? (
-              renderAppleStocksExactChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
+              renderAppleStocksProChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du graphique...</div>
             )}
 
-            {/* GRILLE DE DONNÉES FINANCIÈRES CLIQUABLES AVEC DÉFINITIONS */}
+            {/* STATISTIQUES FINANCIÈRES CLIQUABLES */}
             <div style={{ marginTop: '1.25rem', borderTop: '1px solid #1c1c1e', paddingTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
                 <span style={{ fontSize: '0.75rem', color: '#8e8e93', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -939,7 +963,6 @@ export default function App() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem 0.5rem', fontSize: '0.8rem' }}>
-                
                 {[
                   { label: 'Ouverture', val: `${chartStock.open || '25,22'} €` },
                   { label: 'Vol.', val: chartStock.volume || '360,1 k' },
@@ -965,11 +988,10 @@ export default function App() {
                     </strong>
                   </div>
                 ))}
-
               </div>
             </div>
 
-            {/* AVIS & CATALYSEUR IA */}
+            {/* AVIS IA */}
             <div style={{ backgroundColor: '#1c1c1e', padding: '0.85rem', borderRadius: '12px', fontSize: '0.85rem', margin: '1rem 0', border: '1px solid #2c2c2e' }}>
               <span style={{ color: '#2997ff', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>
                 🎯 Synthèse & Diagnostic de l'IA
