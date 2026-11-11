@@ -24,8 +24,8 @@ const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
   'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.' },
-  'Max.': { title: 'Plus Haut du Jour', desc: 'Prix le plus élevé payé aujourd’hui. Le cours actuel ne peut jamais être supérieur à cette valeur.' },
-  'Min.': { title: 'Plus Bas du Jour', desc: 'Prix le plus bas payé aujourd’hui pour cette action.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix le plus élevé atteint aujourd’hui sur la séance.' },
+  'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré aujourd’hui sur la séance.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
   'Cap. bours.': { title: 'Capitalisation Boursière', desc: 'Valeur marchande totale de l’entreprise en bourse (nombre d’actions × prix actuel).' },
@@ -63,13 +63,13 @@ export default function App() {
 
   // Modal Graphique
   const [chartStock, setChartStock] = useState<any>(null);
-  const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1H');
+  const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1D');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
-  // Timers séparés clairs
-  const [lastMarketTime, setLastMarketTime] = useState<string>('16h23');
-  const [aiCountdown, setAiCountdown] = useState(300); // 5 min pour l'IA
+  // Timers
+  const [lastMarketTime, setLastMarketTime] = useState<string>('17h00');
+  const [aiCountdown, setAiCountdown] = useState(300);
 
   // Auth
   const [authEmail, setAuthEmail] = useState('');
@@ -90,7 +90,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Décompte de l'analyse IA
   useEffect(() => {
     const timer = setInterval(() => {
       setAiCountdown((prev) => {
@@ -110,24 +109,20 @@ export default function App() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const fetchData = async (userId?: string, forceFresh = false) => {
+  const fetchData = async (userId?: string) => {
     try {
       const uId = userId || user?.id;
-      const res = await fetch(`/api/scan?${uId ? `userId=${uId}&` : ''}${forceFresh ? 'fresh=true' : ''}`);
+      const res = await fetch(`/api/scan?${uId ? `userId=${uId}` : ''}`);
       const data = await res.json();
       if (data.markets) setMarkets(data.markets);
       if (data.manualPositions) setManualPositions(data.manualPositions);
       if (data.simulationPortfolio) setSimPortfolio(data.simulationPortfolio);
       if (data.simulationPositions) setSimPositions(data.simulationPositions);
-      // Prend l'heure exacte de ton téléphone à la seconde où les cours sont reçus :
-const heureLocale = new Date().toLocaleTimeString('fr-FR', {
-  hour: '2-digit',
-  minute: '2-digit',
-  timeZone: 'Europe/Paris'
-});
-setLastMarketTime(heureLocale);
+      
+      // Heure exacte française
+      const hFr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+      setLastMarketTime(hFr);
 
-      // Met à jour la modale si elle est ouverte
       if (chartStock) {
         const updated = (data.markets || []).find((m: any) => m.ticker === chartStock.ticker);
         if (updated) setChartStock(updated);
@@ -139,7 +134,7 @@ setLastMarketTime(heureLocale);
 
   const handleManualRefresh = async () => {
     setRefreshingLive(true);
-    await fetchData(user?.id, true);
+    await fetchData(user?.id);
     setRefreshingLive(false);
   };
 
@@ -221,7 +216,7 @@ setLastMarketTime(heureLocale);
   const handleRunSimulation = async () => {
     if (!user) return;
     setLoading(true);
-    setStatusMsg('Gemini et Groq scannent les cours réels...');
+    setStatusMsg('Gemini et Groq scannent les cours...');
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -276,7 +271,7 @@ setLastMarketTime(heureLocale);
     }
   };
 
-  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC QUADRILLAGE RÉEL
+  // RENDU EXACT DU GRAPHIQUE APPLE BOURSE AVEC ÉCHELLE DYNAMIQUE PAR PÉRIODE
   const renderAppleStocksChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
@@ -301,12 +296,13 @@ setLastMarketTime(heureLocale);
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {/* LIGNES DU QUADRILLAGE */}
+            {/* QUADRILLAGE HORIZONTAL */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '70%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', bottom: '15px', left: 0, right: 0, borderTop: '1px dashed #2c2c2e' }} />
 
+            {/* QUADRILLAGE VERTICAL */}
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px solid #141416' }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px solid #141416' }} />
@@ -324,7 +320,7 @@ setLastMarketTime(heureLocale);
             </svg>
           </div>
 
-          {/* AXE Y DROITE */}
+          {/* AXE Y DROITE (S'ADAPTE AUTOMATIQUEMENT À L'AMPLITUDE 1J, 1S, 1M, 3M, 1A) */}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '0.2rem 0', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#8e8e93', borderLeft: '1px solid #1c1c1e', paddingLeft: '0.4rem' }}>
             {scaleSteps.map((val, idx) => (
               <span key={idx}>{val.toFixed(2).replace('.', ',')}</span>
@@ -333,7 +329,7 @@ setLastMarketTime(heureLocale);
 
         </div>
 
-        {/* AXE X TEMPOREL DYNAMIQUE */}
+        {/* AXE X TEMPOREL (24h) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -410,7 +406,7 @@ setLastMarketTime(heureLocale);
   return (
     <div style={{ backgroundColor: '#000000', color: '#f5f5f7', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
-      {/* HEADER AVEC LES 2 COMPTEURS SÉPARÉS */}
+      {/* HEADER iOS */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', backgroundColor: '#1c1c1e', borderBottom: '1px solid #2c2c2e', position: 'sticky', top: 0, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
@@ -424,9 +420,8 @@ setLastMarketTime(heureLocale);
           </div>
         </div>
 
-        {/* 2 COMPTEURS DISTINCTS : BOURSE ET IA */}
+        {/* 2 COMPTEURS : BOURSE ET IA */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* COMPTEUR 1 : BOURSE DIRECT */}
           <div 
             onClick={handleManualRefresh}
             style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem', cursor: 'pointer' }}>
@@ -436,7 +431,6 @@ setLastMarketTime(heureLocale);
             <RefreshCw size={10} color="#2997ff" className={refreshingLive ? 'animate-spin' : ''} />
           </div>
 
-          {/* COMPTEUR 2 : IA SCAN */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#2c2c2e', padding: '0.25rem 0.5rem', borderRadius: '14px', fontSize: '0.7rem' }}>
             <Clock size={10} color="#ff9f0a" />
             <span style={{ color: '#8e8e93' }}>IA :</span>
@@ -480,7 +474,7 @@ setLastMarketTime(heureLocale);
         </div>
       )}
 
-      {/* CONTENU PRINCIPAL */}
+      {/* CONTENU */}
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
@@ -495,7 +489,6 @@ setLastMarketTime(heureLocale);
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Marchés en Direct</h2>
                 </div>
 
-                {/* BOUTON ACTUALISER MANUEL DU MARCHÉ */}
                 <button
                   onClick={handleManualRefresh}
                   disabled={refreshingLive}
@@ -506,7 +499,7 @@ setLastMarketTime(heureLocale);
               </div>
 
               <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
-                Données Yahoo Finance à la seconde près.
+                Données synchronisées en direct.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -538,7 +531,7 @@ setLastMarketTime(heureLocale);
               />
             </div>
 
-            {/* LISTE EN ACCORDÉON COMPACT */}
+            {/* LISTE ACCORDÉON COMPACT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {filteredMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
@@ -557,7 +550,6 @@ setLastMarketTime(heureLocale);
                       boxSizing: 'border-box'
                     }}>
                     
-                    {/* LIGNE PRINCIPALE COMPACTE */}
                     <div
                       style={{
                         padding: '0.75rem 0.9rem',
@@ -581,7 +573,6 @@ setLastMarketTime(heureLocale);
                         </span>
                       </div>
 
-                      {/* COURS EN DIRECT AVEC LA BONNE DEVISE */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
@@ -591,7 +582,6 @@ setLastMarketTime(heureLocale);
                         </div>
                       </div>
 
-                      {/* BADGE RECOMMANDATION */}
                       <div 
                         onClick={() => setChartStock(m)}
                         style={{
@@ -603,7 +593,6 @@ setLastMarketTime(heureLocale);
                         {badge.label}
                       </div>
 
-                      {/* FLÈCHE ACCORDÉON */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -620,7 +609,6 @@ setLastMarketTime(heureLocale);
 
                     </div>
 
-                    {/* DÉPLIÉ EN GRAND */}
                     {isExpanded && (
                       <div style={{
                         padding: '0.75rem 0.9rem',
@@ -906,7 +894,7 @@ setLastMarketTime(heureLocale);
                         <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
                         <div style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
+                          padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
                           backgroundColor: isProfit ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
                           color: isProfit ? '#34c759' : '#ff3b30', marginTop: '0.15rem'
                         }}>
@@ -956,7 +944,7 @@ setLastMarketTime(heureLocale);
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC BOUTON ACTUALISER ET 1H */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC BOUTON ACTUALISER */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -969,7 +957,7 @@ setLastMarketTime(heureLocale);
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
-            {/* EN-TÊTE MODAL AVEC BOUTON ACTUALISER EN DIRECT */}
+            {/* EN-TÊTE MODAL */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -983,7 +971,6 @@ setLastMarketTime(heureLocale);
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
-                {/* COURS EN DIRECT AVEC DEVISE EXACTE ($ OU €) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
                   <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
                     {chartStock.priceFormatted || chartStock.price || chartStock.current_price} {chartStock.currency || '€'}
@@ -998,7 +985,7 @@ setLastMarketTime(heureLocale);
                 </div>
               </div>
 
-              {/* BOUTON D'ACTUALISATION INSTANTANÉE */}
+              {/* BOUTON ACTUALISER DIRECT */}
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshingLive}
@@ -1008,7 +995,7 @@ setLastMarketTime(heureLocale);
               </button>
             </div>
 
-            {/* SÉLECTEUR AVEC BOUTON 1H (DERNIÈRE HEURE GLISSANTE) */}
+            {/* SÉLECTEUR DE PÉRIODES */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1H', '1D', '1W', '1M', '3M', '1Y'] as const).map(p => (
                 <button
@@ -1025,7 +1012,7 @@ setLastMarketTime(heureLocale);
               ))}
             </div>
 
-            {/* GRAPHIQUE APPLE BOURSE AVEC QUADRILLAGE RÉEL */}
+            {/* LE GRAPHIQUE APPLE BOURSE AVEC ÉCHELLE DYNAMIQUE PAR PÉRIODE */}
             {chartStock.history ? (
               renderAppleStocksChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
@@ -1076,7 +1063,7 @@ setLastMarketTime(heureLocale);
                 🎯 Synthèse & Diagnostic de l'IA
               </span>
               <p style={{ margin: 0, color: '#f5f5f7', lineHeight: '1.4' }}>
-                {chartStock.aiAdvice || "Surveillance algorithmique continue assurée par Gemini & Groq."}
+                {chartStock.aiAdvice || "Surveillance continue assurée par Gemini & Groq."}
               </p>
             </div>
 
