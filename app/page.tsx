@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Menu, X, Bot, TrendingUp, RefreshCw, Zap, Layers, 
   RotateCcw, Globe, LogOut, CheckCircle, ShieldAlert, 
   Sparkles, Plus, Trash2, ArrowUpRight, ArrowDownRight, Clock,
   Search, Flame, LineChart, ChevronDown, ChevronUp, History, Landmark,
-  HelpCircle, Info
+  HelpCircle, Info, Filter, ArrowUpDown
 } from 'lucide-react';
 
 function getBrowserSupabase() {
@@ -23,8 +23,8 @@ function getBrowserSupabase() {
 const supabase = getBrowserSupabase();
 
 const METRIC_DEFINITIONS: Record<string, { title: string; desc: string }> = {
-  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la bourse ce matin.' },
-  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix le plus élevé atteint aujourd’hui sur la séance.' },
+  'Ouverture': { title: 'Cours d’Ouverture', desc: 'Prix de la première transaction exécutée lors de l’ouverture de la séance ce matin.' },
+  'Max.': { title: 'Plus Haut de la Séance', desc: 'Prix maximum absolu atteint aujourd’hui sur la séance.' },
   'Min.': { title: 'Plus Bas de la Séance', desc: 'Prix le plus bas enregistré aujourd’hui sur la séance.' },
   'Vol.': { title: 'Volume Échangé', desc: 'Nombre total d’actions achetées et vendues aujourd’hui.' },
   'PER': { title: 'PER (Price Earnings Ratio)', desc: 'Ratio Cours/Bénéfice. Mesure combien de fois les investisseurs paient le bénéfice annuel de l’entreprise.' },
@@ -47,30 +47,31 @@ export default function App() {
   const [simPortfolio, setSimPortfolio] = useState<any>({ cash_balance: 500, total_value: 500 });
   const [simPositions, setSimPositions] = useState<any[]>([]);
 
-  // Accordéon des actions
+  // Accordéon des actions (Marchés et Portefeuille)
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
 
-  // Filtres
+  // Filtres Bourse & Tri Leboncoin
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'PARIS'>('ALL');
+  const [sortFilter, setSortFilter] = useState<'DEFAULT' | 'GAIN_24H' | 'GAIN_1Y' | 'DROP_24H' | 'DROP_1Y'>('DEFAULT');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
 
-  // Mon Portefeuille
+  // Mon Portefeuille Recherche
   const [portfolioSearchQuery, setPortfolioSearchQuery] = useState('');
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [newShares, setNewShares] = useState('5');
   const [newPrice, setNewPrice] = useState('');
   const [newThreshold, setNewThreshold] = useState('3.0');
 
-  // Modal Graphique Direct Yahoo
+  // Modal Graphique
   const [chartStock, setChartStock] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'1H' | '1D' | '1W' | '1M' | '3M' | '1Y'>('1H');
-  const [realChartData, setRealChartData] = useState<any>(null);
-  const [chartLoading, setChartLoading] = useState(false);
+  const [scrubPoint, setScrubPoint] = useState<{ price: number; timeStr: string; x: number; y: number } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeDefinition, setActiveDefinition] = useState<{ title: string; desc: string } | null>(null);
 
   // Timers
-  const [lastMarketTime, setLastMarketTime] = useState<string>('17h28');
+  const [lastMarketTime, setLastMarketTime] = useState<string>('18h13');
   const [aiCountdown, setAiCountdown] = useState(300);
 
   // Auth
@@ -123,40 +124,19 @@ export default function App() {
       
       const hFr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
       setLastMarketTime(hFr);
+
+      if (chartStock) {
+        const updated = (data.markets || []).find((m: any) => m.ticker === chartStock.ticker);
+        if (updated) setChartStock(updated);
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
-  // RÉCUPÉRATION DU VRAI GRAPHIQUE YAHOO FINANCE À LA DEMANDE (1H, 1J, 1S, 1M, 3M, 1A)
-  const fetchLiveChart = async (ticker: string, period: string) => {
-    setChartLoading(true);
-    try {
-      const res = await fetch(`/api/scan?chartTicker=${encodeURIComponent(ticker)}&chartPeriod=${period}`);
-      const data = await res.json();
-      if (data.chart) {
-        setRealChartData(data.chart);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setChartLoading(false);
-    }
-  };
-
-  // Dès qu'on ouvre ou change la période
-  useEffect(() => {
-    if (chartStock) {
-      fetchLiveChart(chartStock.ticker, chartPeriod);
-    }
-  }, [chartStock?.ticker, chartPeriod]);
-
   const handleManualRefresh = async () => {
     setRefreshingLive(true);
     await fetchData(user?.id);
-    if (chartStock) {
-      await fetchLiveChart(chartStock.ticker, chartPeriod);
-    }
     setRefreshingLive(false);
   };
 
@@ -185,10 +165,11 @@ export default function App() {
   };
 
   const toggleCardExpand = (ticker: string) => {
-    setExpandedCards(prev => ({
-      ...prev,
-      [ticker]: !prev[ticker]
-    }));
+    setExpandedCards(prev => ({ ...prev, [ticker]: !prev[ticker] }));
+  };
+
+  const togglePortfolioExpand = (id: string) => {
+    setExpandedPortfolio(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleSelectStock = (stock: any) => {
@@ -238,7 +219,7 @@ export default function App() {
   const handleRunSimulation = async () => {
     if (!user) return;
     setLoading(true);
-    setStatusMsg('Gemini et Groq scannent les cours...');
+    setStatusMsg('L’IA passe ses ordres de simulation...');
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -272,10 +253,19 @@ export default function App() {
     return q.split(/\s+/).some(w => w.length > 2 && corpus.includes(w));
   };
 
-  const filteredMarkets = markets.filter(m => {
-    const matchFilter = marketFilter === 'ALL' || m.market === marketFilter;
-    return matchFilter && smartMatch(m, marketSearchQuery);
-  });
+  // COMBINAISON DU FILTRE DE MARCHÉ + RECHERCHE + TRI LEBONCOIN
+  const filteredAndSortedMarkets = markets
+    .filter(m => {
+      const matchFilter = marketFilter === 'ALL' || m.market === marketFilter;
+      return matchFilter && smartMatch(m, marketSearchQuery);
+    })
+    .sort((a, b) => {
+      if (sortFilter === 'GAIN_24H') return b.changeRaw - a.changeRaw;
+      if (sortFilter === 'DROP_24H') return a.changeRaw - b.changeRaw;
+      if (sortFilter === 'GAIN_1Y') return (b.change1YRaw || 0) - (a.change1YRaw || 0);
+      if (sortFilter === 'DROP_1Y') return (a.change1YRaw || 0) - (b.change1YRaw || 0);
+      return 0; // Par défaut
+    });
 
   const portfolioSuggestions = portfolioSearchQuery.trim() === '' ? [] : markets.filter(m => smartMatch(m, portfolioSearchQuery));
 
@@ -293,8 +283,8 @@ export default function App() {
     }
   };
 
-  // RENDU DU VRAI GRAPHIQUE APPLE BOURSE (AVEC VRAIES BOUGIES SANS AUCUN CRÉNEAU ARTIFICIEL)
-  const renderAppleStocksLiveChart = (chartData: any, isUp: boolean) => {
+  // RENDU DU GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE MAGNÉTIQUE
+  const renderAppleStocksInteractiveChart = (chartData: any, isUp: boolean) => {
     if (!chartData || !chartData.points || chartData.points.length === 0) return null;
     const points = chartData.points;
     const min = chartData.low;
@@ -313,11 +303,32 @@ export default function App() {
     const polygon = `0,${h} ${coords} ${w},${h}`;
     const scaleSteps: string[] = chartData.scaleSteps || [max.toString(), min.toString()];
 
+    // Gestion du glissement au doigt
+    const handleTouchOrMove = (clientX: number, target: HTMLElement) => {
+      const rect = target.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const idx = Math.round(ratio * (points.length - 1));
+      const pt = points[idx];
+      if (pt) {
+        const x = (idx / (points.length - 1)) * w;
+        const y = h - ((pt.price - min) / range) * (h - 35) - 15;
+        setScrubPoint({ price: pt.price, timeStr: pt.timeStr, x, y });
+      }
+    };
+
     return (
       <div style={{ backgroundColor: '#000000', borderRadius: '12px', padding: '0.8rem 0.4rem 0.4rem 0.4rem', border: '1px solid #1c1c1e', boxSizing: 'border-box' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px', gap: '0.4rem', height: `${h}px`, position: 'relative' }}>
           
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          <div 
+            style={{ position: 'relative', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
+            onTouchStart={(e) => handleTouchOrMove(e.touches[0].clientX, e.currentTarget)}
+            onTouchMove={(e) => handleTouchOrMove(e.touches[0].clientX, e.currentTarget)}
+            onPointerDown={(e) => handleTouchOrMove(e.clientX, e.currentTarget)}
+            onPointerMove={(e) => { if (e.buttons === 1) handleTouchOrMove(e.clientX, e.currentTarget); }}
+            onPointerUp={() => setScrubPoint(null)}
+            onTouchEnd={() => setScrubPoint(null)}>
+            
             {/* QUADRILLAGE HORIZONTAL */}
             <div style={{ position: 'absolute', top: '15px', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
             <div style={{ position: 'absolute', top: '38%', left: 0, right: 0, borderTop: '1px solid #1c1c1e' }} />
@@ -331,15 +342,36 @@ export default function App() {
 
             <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
-                <linearGradient id="appleGradientLiveChart" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="appleGradientInteractive" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={strokeColor} stopOpacity="0.32" />
                   <stop offset="85%" stopColor={strokeColor} stopOpacity="0.04" />
                   <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <polygon points={polygon} fill="url(#appleGradientLiveChart)" />
+              <polygon points={polygon} fill="url(#appleGradientInteractive)" />
               <polyline points={coords} fill="none" stroke={strokeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+
+              {/* CURSEUR TACTILE AVEC POINT MAGNÉTIQUE QUI SUIT LA COURBE */}
+              {scrubPoint && (
+                <g>
+                  {/* Ligne de visée verticale */}
+                  <line x1={scrubPoint.x} y1={0} x2={scrubPoint.x} y2={h} stroke="#8e8e93" strokeWidth="1" strokeDasharray="3 3" />
+                  {/* Point magnétique sur la courbe */}
+                  <circle cx={scrubPoint.x} cy={scrubPoint.y} r="5" fill="#ffffff" stroke={strokeColor} strokeWidth="3" />
+                </g>
+              )}
             </svg>
+
+            {/* BULLE D'HEURE FLOTTANTE AU DOIGT */}
+            {scrubPoint && (
+              <div style={{
+                position: 'absolute', top: '4px', left: `${Math.max(10, Math.min(w - 70, scrubPoint.x - 30))}px`,
+                backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', padding: '0.15rem 0.4rem',
+                borderRadius: '6px', fontSize: '0.65rem', color: '#fff', pointerEvents: 'none'
+              }}>
+                {scrubPoint.timeStr}
+              </div>
+            )}
           </div>
 
           {/* AXE Y DROITE (CENTIMES PROPRES SANS DOUBLONS) */}
@@ -351,7 +383,7 @@ export default function App() {
 
         </div>
 
-        {/* AXE X TEMPOREL (HEURES ET DATES FRANÇAISES RÉELLES) */}
+        {/* AXE X TEMPOREL */}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.4rem 0.2rem 0.4rem', fontSize: '0.72rem', color: '#8e8e93', borderTop: '1px solid #1c1c1e', marginTop: '0.4rem' }}>
           {(chartData.xMarkers || []).map((marker: string, i: number) => (
             <span key={i}>{marker}</span>
@@ -442,7 +474,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 2 COMPTEURS DISTINCTS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
             onClick={handleManualRefresh}
@@ -474,7 +505,7 @@ export default function App() {
           <button
             onClick={() => { setActiveTab('MARKETS'); setMenuOpen(false); }}
             style={{ padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: activeTab === 'MARKETS' ? '#0071e3' : '#2c2c2e', color: '#fff', fontWeight: 700, textAlign: 'left', cursor: 'pointer' }}>
-            1. Analyse du Marché
+            1. Marchés & Détecteur de Pépites
           </button>
           <button
             onClick={() => { setActiveTab('AUTO_SIM'); setMenuOpen(false); }}
@@ -500,11 +531,11 @@ export default function App() {
       <main style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '1rem', boxSizing: 'border-box' }}>
 
         {/* ======================================================== */}
-        {/* ONGLET 1 : ANALYSE DU MARCHÉ (ACCORDÉON COMPACT) */}
+        {/* ONGLET 1 : MARCHÉS (FILTRES LEBONCOIN & ACCORDÉON) */}
         {/* ======================================================== */}
         {activeTab === 'MARKETS' && (
           <div>
-            <div style={{ marginBottom: '1rem' }}>
+            <div style={{ marginBottom: '0.85rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <Flame size={20} color="#ff9f0a" />
@@ -520,8 +551,8 @@ export default function App() {
                 </button>
               </div>
 
-              <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.85rem 0' }}>
-                Données Yahoo Finance à la seconde près.
+              <p style={{ color: '#8e8e93', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
+                Données synchronisées en direct.
               </p>
 
               {/* FILTRES MARCHÉS */}
@@ -539,9 +570,46 @@ export default function App() {
                   </button>
                 ))}
               </div>
+
+              {/* FILTRES STYLE LEBONCOIN (TRI RAPIDE PAR HAUSSE / BAISSE) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.6rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
+                <span style={{ fontSize: '0.7rem', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
+                  <Filter size={12} /> Trier :
+                </span>
+
+                <button
+                  onClick={() => setSortFilter('DEFAULT')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #3a3a3c', backgroundColor: sortFilter === 'DEFAULT' ? '#3a3a3c' : 'transparent', color: '#fff', fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  Par défaut
+                </button>
+
+                <button
+                  onClick={() => setSortFilter('GAIN_24H')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #34c759', backgroundColor: sortFilter === 'GAIN_24H' ? 'rgba(52, 199, 89, 0.25)' : 'transparent', color: '#34c759', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  🚀 Hausse 24h
+                </button>
+
+                <button
+                  onClick={() => setSortFilter('GAIN_1Y')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #34c759', backgroundColor: sortFilter === 'GAIN_1Y' ? 'rgba(52, 199, 89, 0.25)' : 'transparent', color: '#34c759', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📈 Hausse 1 An
+                </button>
+
+                <button
+                  onClick={() => setSortFilter('DROP_24H')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_24H' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📉 Baisse 24h
+                </button>
+
+                <button
+                  onClick={() => setSortFilter('DROP_1Y')}
+                  style={{ padding: '0.25rem 0.55rem', borderRadius: '12px', border: '1px solid #ff453a', backgroundColor: sortFilter === 'DROP_1Y' ? 'rgba(255, 69, 58, 0.25)' : 'transparent', color: '#ff453a', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  🔻 Baisse 1 An
+                </button>
+              </div>
             </div>
 
-            {/* BARRE DE RECHERCHE */}
+            {/* RECHERCHE */}
             <div style={{ position: 'relative', width: '100%', marginBottom: '1rem' }}>
               <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
               <input
@@ -555,7 +623,7 @@ export default function App() {
 
             {/* LISTE EN ACCORDÉON COMPACT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              {filteredMarkets.map((m) => {
+              {filteredAndSortedMarkets.map((m) => {
                 const badge = getBadgeStyle(m.aiColor);
                 const isExpanded = !!expandedCards[m.ticker];
                 const cur = m.currency || '€';
@@ -582,7 +650,7 @@ export default function App() {
                       }}>
                       
                       <div
-                        onClick={() => { setChartStock(m); setRealChartData(null); }}
+                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <strong style={{ fontSize: '1.05rem', color: '#fff' }}>{m.ticker}</strong>
@@ -596,7 +664,7 @@ export default function App() {
                       </div>
 
                       <div 
-                        onClick={() => { setChartStock(m); setRealChartData(null); }}
+                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
                         style={{ textAlign: 'right', marginRight: '0.6rem' }}>
                         <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{m.priceFormatted} {cur}</div>
                         <div style={{ fontSize: '0.78rem', color: m.changeRaw >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
@@ -605,7 +673,7 @@ export default function App() {
                       </div>
 
                       <div 
-                        onClick={() => { setChartStock(m); setRealChartData(null); }}
+                        onClick={() => { setChartStock(m); setScrubPoint(null); }}
                         style={{
                           padding: '0.3rem 0.55rem', borderRadius: '6px',
                           backgroundColor: badge.bg, border: `1px solid ${badge.border}`,
@@ -652,7 +720,7 @@ export default function App() {
                         </div>
 
                         <button
-                          onClick={() => { setChartStock(m); setRealChartData(null); }}
+                          onClick={() => { setChartStock(m); setScrubPoint(null); }}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
                             padding: '0.55rem', backgroundColor: '#0071e3', color: '#fff',
@@ -738,7 +806,7 @@ export default function App() {
                 simPositions.map((p) => {
                   const isProfit = Number(p.pnl) >= 0;
                   return (
-                    <div key={p.id} onClick={() => { setChartStock(p); setRealChartData(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
+                    <div key={p.id} onClick={() => { setChartStock(p); setScrubPoint(null); }} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px', padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <strong style={{ fontSize: '1rem' }}>{p.company_name}</strong>
@@ -773,13 +841,13 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL */}
+        {/* ONGLET 3 : MON PORTEFEUILLE RÉEL (RECHERCHE FINE & ACCORDÉON) */}
         {/* ======================================================== */}
         {activeTab === 'MY_PORTFOLIO' && (
           <div>
             <div style={{
               backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '16px',
-              padding: '1.25rem', marginBottom: '1.5rem', background: 'linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%)'
+              padding: '1.25rem', marginBottom: '1.2rem', background: 'linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#8e8e93', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700 }}>
                 <Landmark size={14} color="#2997ff" />
@@ -797,7 +865,7 @@ export default function App() {
                   backgroundColor: manualPnL >= 0 ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
                   color: manualPnL >= 0 ? '#34c759' : '#ff3b30'
                 }}>
-                  {manualPnL >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={12} />}
+                  {manualPnL >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                   {manualPnL >= 0 ? '+' : ''}{manualPnL.toFixed(2).replace('.', ',')} € ({manualPnLPercent.toFixed(1)}%)
                 </div>
               </div>
@@ -808,152 +876,190 @@ export default function App() {
               </div>
             </div>
 
-            {/* FORMULAIRE RECHERCHE */}
-            <div style={{ backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Ajouter une action à surveiller</span>
+            {/* BARRE DE RECHERCHE COMPACTE SANS ENCOMBREMENT */}
+            <div style={{ position: 'relative', width: '100%', marginBottom: '1.2rem' }}>
+              <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                value={portfolioSearchQuery}
+                onChange={e => setPortfolioSearchQuery(e.target.value)}
+                placeholder="Rechercher une action à ajouter..."
+                style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '10px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
+              />
 
-              <div style={{ position: 'relative', width: '100%', marginBottom: '0.75rem' }}>
-                <Search size={16} color="#8e8e93" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  value={portfolioSearchQuery}
-                  onChange={e => setPortfolioSearchQuery(e.target.value)}
-                  placeholder="Tapez (ex: Dassault, DSY.PA, MSFT, Nvidia...)"
-                  style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.4rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none' }}
-                />
-
-                {portfolioSuggestions.length > 0 && (
-                  <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: '8px', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
-                    {portfolioSuggestions.map(s => (
-                      <div
-                        key={s.ticker}
-                        onClick={() => handleSelectStock(s)}
-                        style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #3a3a3c', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <strong style={{ fontSize: '0.9rem' }}>{s.name}</strong>
-                          <span style={{ color: '#2997ff', fontSize: '0.8rem', marginLeft: '0.3rem' }}>({s.ticker})</span>
-                        </div>
-                        <div style={{ fontWeight: 700, color: '#34c759', fontSize: '0.85rem' }}>{s.priceFormatted} {s.currency}</div>
+              {portfolioSuggestions.length > 0 && (
+                <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: '8px', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
+                  {portfolioSuggestions.map(s => (
+                    <div
+                      key={s.ticker}
+                      onClick={() => handleSelectStock(s)}
+                      style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #3a3a3c', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem' }}>{s.name}</strong>
+                        <span style={{ color: '#2997ff', fontSize: '0.8rem', marginLeft: '0.3rem' }}>({s.ticker})</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {selectedStock && (
-                <form onSubmit={handleAddManual} style={{ backgroundColor: '#2c2c2e', padding: '0.85rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, color: '#2997ff' }}>{selectedStock.name} ({selectedStock.ticker})</span>
-                    <button
-                      type="button"
-                      onClick={() => setNewPrice(selectedStock.price.toString())}
-                      style={{ background: 'none', border: 'none', color: '#34c759', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                      Cours actuel : {selectedStock.price} {selectedStock.currency}
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                    <div>
-                      <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Parts détenues</label>
-                      <input
-                        type="number"
-                        step="any"
-                        required
-                        value={newShares}
-                        onChange={e => setNewShares(e.target.value)}
-                        style={{ width: '100%', padding: '0.55rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                      />
+                      <div style={{ fontWeight: 700, color: '#34c759', fontSize: '0.85rem' }}>{s.priceFormatted} {s.currency}</div>
                     </div>
-                    <div>
-                      <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat ({selectedStock.currency})</label>
-                      <input
-                        type="number"
-                        step="any"
-                        required
-                        value={newPrice}
-                        onChange={e => setNewPrice(e.target.value)}
-                        placeholder={selectedStock.price.toString()}
-                        style={{ width: '100%', padding: '0.55rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{ padding: '0.65rem', backgroundColor: '#0071e3', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}>
-                    Enregistrer dans mon Portefeuille
-                  </button>
-                </form>
+                  ))}
+                </div>
               )}
             </div>
 
+            {/* FORMULAIRE DÉROULANT UNIQUEMENT LORS D'UN CHOIX */}
+            {selectedStock && (
+              <form onSubmit={handleAddManual} style={{ backgroundColor: '#1c1c1e', border: '1px solid #2997ff', padding: '0.85rem', borderRadius: '10px', marginBottom: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, color: '#2997ff' }}>{selectedStock.name} ({selectedStock.ticker})</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewPrice(selectedStock.price.toString())}
+                    style={{ background: 'none', border: 'none', color: '#34c759', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                    Cours actuel : {selectedStock.price} {selectedStock.currency}
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Parts détenues</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={newShares}
+                      onChange={e => setNewShares(e.target.value)}
+                      style={{ width: '100%', padding: '0.55rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.7rem', color: '#8e8e93' }}>Prix d'achat ({selectedStock.currency})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={newPrice}
+                      onChange={e => setNewPrice(e.target.value)}
+                      placeholder={selectedStock.price.toString()}
+                      style={{ width: '100%', padding: '0.55rem', backgroundColor: '#000', border: '1px solid #3a3a3c', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{ padding: '0.65rem', backgroundColor: '#0071e3', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}>
+                  Enregistrer dans mon Portefeuille
+                </button>
+              </form>
+            )}
+
+            {/* LISTE EN ACCORDÉON COMPACT POUR MON PORTEFEUILLE */}
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.6rem' }}>
               Vos Lignes en Portefeuille ({manualPositions.length})
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
               {manualPositions.map((p) => {
                 const isProfit = Number(p.pnl) >= 0;
+                const isExpanded = !!expandedPortfolio[p.id];
+
                 return (
                   <div
                     key={p.id}
                     style={{
                       backgroundColor: '#1c1c1e', border: '1px solid #2c2c2e', borderRadius: '12px',
-                      padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem'
+                      overflow: 'hidden', boxSizing: 'border-box'
                     }}>
                     
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
+                    {/* LIGNE ULTRA COMPACTE PAR DÉFAUT */}
+                    <div
+                      style={{
+                        padding: '0.75rem 0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer'
+                      }}>
+                      
+                      <div
+                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <strong style={{ fontSize: '1.05rem' }}>{p.company_name}</strong>
+                          <strong style={{ fontSize: '1.05rem', color: '#fff' }}>{p.company_name}</strong>
                           <span style={{ color: '#2997ff', fontSize: '0.8rem', fontWeight: 700 }}>{p.ticker}</span>
                         </div>
-                        <span style={{ fontSize: '0.75rem', color: '#8e8e93' }}>Quantité : {p.shares} actions</span>
+                        <span style={{ fontSize: '0.75rem', color: '#8e8e93' }}>{p.shares} actions</span>
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.current_value} €</div>
+                      <div 
+                        onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                        style={{ textAlign: 'right', marginRight: '0.6rem' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{p.current_value} €</div>
                         <div style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800,
-                          backgroundColor: isProfit ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)',
-                          color: isProfit ? '#34c759' : '#ff3b30', marginTop: '0.15rem'
+                          display: 'inline-flex', alignItems: 'center', gap: '0.15rem',
+                          fontSize: '0.75rem', fontWeight: 800, color: isProfit ? '#34c759' : '#ff3b30'
                         }}>
-                          {isProfit ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                          {isProfit ? '+' : ''}{p.pnl} € ({p.pnl_percent}%)
+                          {isProfit ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                          {isProfit ? '+' : ''}{p.pnl_percent}%
                         </div>
                       </div>
-                    </div>
-
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: '1fr 1fr',
-                      backgroundColor: '#000', border: '1px solid #2c2c2e', borderRadius: '8px',
-                      padding: '0.6rem 0.8rem', fontSize: '0.75rem'
-                    }}>
-                      <div>
-                        <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Prix d'achat unitaire</span>
-                        <strong style={{ fontSize: '0.9rem', color: '#f5f5f7' }}>{p.average_buy_price} {p.currency || '€'}</strong>
-                      </div>
-                      <div style={{ textAlign: 'right', borderLeft: '1px solid #2c2c2e', paddingLeft: '0.8rem' }}>
-                        <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Cours actuel en direct</span>
-                        <strong style={{ fontSize: '0.9rem', color: '#2997ff' }}>{p.current_price} {p.currency || '€'}</strong>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
-                      <button
-                        onClick={() => { setChartStock(p); setRealChartData(null); }}
-                        style={{ background: 'none', border: 'none', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <LineChart size={14} /> Voir le graphique Bourse
-                      </button>
 
                       <button
-                        onClick={() => handleDeleteManual(p.id)}
-                        style={{ background: 'none', border: 'none', color: '#ff453a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <Trash2 size={14} /> Retirer
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePortfolioExpand(p.id);
+                        }}
+                        style={{
+                          background: '#2c2c2e', border: 'none', color: '#fff',
+                          borderRadius: '50%', width: '28px', height: '28px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', padding: 0
+                        }}>
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </button>
+
                     </div>
+
+                    {/* VOLET DÉROULANT POUR VOIR LE RESTE */}
+                    {isExpanded && (
+                      <div style={{
+                        padding: '0.75rem 0.9rem',
+                        borderTop: '1px solid #2c2c2e',
+                        backgroundColor: '#161618',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.65rem'
+                      }}>
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: '1fr 1fr',
+                          backgroundColor: '#000', border: '1px solid #2c2c2e', borderRadius: '8px',
+                          padding: '0.6rem 0.8rem', fontSize: '0.75rem'
+                        }}>
+                          <div>
+                            <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Prix d'achat unitaire</span>
+                            <strong style={{ fontSize: '0.9rem', color: '#f5f5f7' }}>{p.average_buy_price} {p.currency || '€'}</strong>
+                          </div>
+                          <div style={{ textAlign: 'right', borderLeft: '1px solid #2c2c2e', paddingLeft: '0.8rem' }}>
+                            <span style={{ color: '#8e8e93', display: 'block', marginBottom: '0.15rem' }}>Cours actuel en direct</span>
+                            <strong style={{ fontSize: '0.9rem', color: '#2997ff' }}>{p.current_price} {p.currency || '€'}</strong>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
+                          <button
+                            onClick={() => { setChartStock(p); setScrubPoint(null); }}
+                            style={{ background: 'none', border: 'none', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <LineChart size={14} /> Voir le graphique Bourse
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteManual(p.id)}
+                            style={{ background: 'none', border: 'none', color: '#ff453a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Trash2 size={14} /> Retirer
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 );
@@ -966,7 +1072,7 @@ export default function App() {
       </main>
 
       {/* ======================================================== */}
-      {/* MODAL GRAPHIQUE APPLE BOURSE CONNECTÉ AU VRAI YAHOO FINANCE */}
+      {/* MODAL GRAPHIQUE APPLE BOURSE AVEC CURSEUR TACTILE MAGNÉTIQUE */}
       {/* ======================================================== */}
       {chartStock && (
         <div style={{
@@ -979,6 +1085,7 @@ export default function App() {
             width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1rem', boxSizing: 'border-box'
           }}>
             
+            {/* EN-TÊTE DYNAMIQUE AVEC PRIX DU CURSEUR AU TOUCHER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
               <div>
                 <button
@@ -992,12 +1099,15 @@ export default function App() {
                   <span style={{ color: '#8e8e93', fontSize: '0.9rem', fontWeight: 500 }}>{chartStock.name}</span>
                 </div>
 
+                {/* PRIX EN DIRECT OU PRIX DU POINT MAGNÉTIQUE AU DOIGT */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
                   <span style={{ fontSize: '1.5rem', fontWeight: 900 }}>
-                    {chartStock.priceFormatted || chartStock.price || chartStock.current_price} {chartStock.currency || '€'}
+                    {scrubPoint 
+                      ? scrubPoint.price.toFixed(2).replace('.', ',') 
+                      : (chartStock.priceFormatted || chartStock.price || chartStock.current_price)} {chartStock.currency || '€'}
                   </span>
                   <span style={{ fontSize: '0.95rem', color: (chartStock.changeRaw ?? 1) >= 0 ? '#34c759' : '#ff3b30', fontWeight: 800 }}>
-                    {realChartData?.periodChange || chartStock.change}
+                    {scrubPoint ? scrubPoint.timeStr : (chartStock.history?.[chartPeriod]?.periodChange || chartStock.change)}
                   </span>
                 </div>
 
@@ -1008,19 +1118,19 @@ export default function App() {
 
               <button
                 onClick={handleManualRefresh}
-                disabled={refreshingLive || chartLoading}
+                disabled={refreshingLive}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.45rem 0.75rem', backgroundColor: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: '8px', color: '#2997ff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '2.5rem' }}>
-                <RefreshCw size={13} className={refreshingLive || chartLoading ? 'animate-spin' : ''} />
+                <RefreshCw size={13} className={refreshingLive ? 'animate-spin' : ''} />
                 <span>Actualiser</span>
               </button>
             </div>
 
-            {/* SÉLECTEUR DE PÉRIODES OFFICIEL */}
+            {/* SÉLECTEUR 1H, 1J, 1S, 1M, 3M, 1A */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.3rem', backgroundColor: '#1c1c1e', padding: '0.25rem', borderRadius: '10px', margin: '0.85rem 0' }}>
               {(['1H', '1D', '1W', '1M', '3M', '1Y'] as const).map(p => (
                 <button
                   key={p}
-                  onClick={() => setChartPeriod(p)}
+                  onClick={() => { setChartPeriod(p); setScrubPoint(null); }}
                   style={{
                     padding: '0.45rem 0', borderRadius: '8px', border: 'none',
                     backgroundColor: chartPeriod === p ? '#3a3a3c' : 'transparent',
@@ -1032,15 +1142,11 @@ export default function App() {
               ))}
             </div>
 
-            {/* LE VRAI GRAPHIQUE YAHOO FINANCE TRACÉ EN DIRECT */}
-            {chartLoading ? (
-              <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', fontSize: '0.85rem', backgroundColor: '#000', borderRadius: '12px' }}>
-                <RefreshCw size={18} className="animate-spin" style={{ marginRight: '0.5rem' }} /> Chargement du cours réel Yahoo Finance...
-              </div>
-            ) : realChartData ? (
-              renderAppleStocksLiveChart(realChartData, (chartStock.changeRaw ?? 1) >= 0)
+            {/* LE GRAPHIQUE PRÉCIS AVEC CURSEUR MAGNÉTIQUE */}
+            {chartStock.history ? (
+              renderAppleStocksInteractiveChart(chartStock.history[chartPeriod], (chartStock.changeRaw ?? 1) >= 0)
             ) : (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du cours en direct...</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#636366' }}>Chargement du graphique...</div>
             )}
 
             {/* STATISTIQUES FINANCIÈRES SYNCHRONISÉES */}
